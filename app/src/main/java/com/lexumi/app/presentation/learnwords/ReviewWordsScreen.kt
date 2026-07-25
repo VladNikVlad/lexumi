@@ -19,5 +19,6 @@ fun ReviewWordsScreen(
         onAddToReview = null, // already in the review list
         onNext = viewModel::next,
         doneLabel = "На головну",
+        onSpeak = viewModel::speak,
     )
 }

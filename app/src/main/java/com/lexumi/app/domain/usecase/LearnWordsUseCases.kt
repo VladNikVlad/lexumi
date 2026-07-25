@@ -74,15 +74,23 @@ class SubmitWordAnswerUseCase @Inject constructor(private val wordRepository: Wo
 
 /**
  * Picks the words for one learning session: brand-new / least-seen words are
- * prioritised first, the rest is random, and the list length follows the
- * user's "words per session" setting (default 10, point 20 & profile settings).
+ * prioritised first, the count follows "words per session", and each picked
+ * word is queued [repetitions] times, all shuffled together — so with 10
+ * words and 3 repetitions the session has 30 turns total, each of the 10
+ * words appearing exactly 3 times in random order (not back-to-back).
+ * Returns word IDs rather than snapshots, since a word's level/score can
+ * change between its own repeats within the same session.
  */
 class GetSessionWordsUseCase @Inject constructor(private val wordRepository: WordRepository) {
-    suspend operator fun invoke(topicId: Long, wordsPerSession: Int): List<Word> {
+    suspend operator fun invoke(topicId: Long, wordsPerSession: Int, repetitions: Int): List<Long> {
         val all = wordRepository.getWords(topicId)
         val notMastered = all.filter { it.score < SCORE_TO_MASTER }
         val sorted = notMastered.sortedBy { it.timesSeen }
-        val leastSeen = sorted.take(wordsPerSession)
-        return leastSeen.shuffled()
+        val chosenIds = sorted.take(wordsPerSession).map { it.id }
+        val repeatCount = repetitions.coerceAtLeast(1)
+        val queue = buildList {
+            repeat(repeatCount) { addAll(chosenIds) }
+        }
+        return queue.shuffled()
     }
 }

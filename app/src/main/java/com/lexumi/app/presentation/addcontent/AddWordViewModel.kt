@@ -37,9 +37,6 @@ class AddWordViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    private val _imageTooLarge = MutableStateFlow(false)
-    val imageTooLarge: StateFlow<Boolean> = _imageTooLarge
-
     private val _created = MutableStateFlow(false)
     val created: StateFlow<Boolean> = _created
 
@@ -54,9 +51,6 @@ class AddWordViewModel @Inject constructor(
             _languageId.value = section?.languageId
         }
     }
-
-    fun onImageTooLarge() { _imageTooLarge.value = true }
-    fun dismissImageTooLarge() { _imageTooLarge.value = false }
 
     fun submit(imagePath: String?, term: String, translation: String, ruleId: Long?) {
         viewModelScope.launch {

@@ -45,10 +45,9 @@ fun AddImageContentScreen(
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@rememberLauncherForActivityResult
         val file = File(context.filesDir, "image_${System.currentTimeMillis()}.jpg")
-        file.writeBytes(bytes)
-        imagePath = file.absolutePath
+        val result = com.lexumi.app.util.ImageCompressor.compressToFile(context, uri, file, maxBytes = 300 * 1024)
+        if (result != null) imagePath = result.absolutePath
     }
 
     GradientBackground {

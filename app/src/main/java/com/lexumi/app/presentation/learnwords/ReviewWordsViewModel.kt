@@ -4,10 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lexumi.app.domain.model.AnswerCheck
 import com.lexumi.app.domain.model.Word
+import com.lexumi.app.domain.repository.LanguageRepository
+import com.lexumi.app.domain.repository.SectionRepository
+import com.lexumi.app.domain.repository.TopicRepository
 import com.lexumi.app.domain.repository.WordRepository
 import com.lexumi.app.domain.usecase.BuildMultipleChoiceUseCase
 import com.lexumi.app.domain.usecase.SubmitWordAnswerUseCase
 import com.lexumi.app.domain.usecase.askTermFirst
+import com.lexumi.app.util.TtsManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,10 +24,18 @@ class ReviewWordsViewModel @Inject constructor(
     private val wordRepository: WordRepository,
     private val buildMultipleChoice: BuildMultipleChoiceUseCase,
     private val submitAnswer: SubmitWordAnswerUseCase,
+    private val topicRepository: TopicRepository,
+    private val sectionRepository: SectionRepository,
+    private val languageRepository: LanguageRepository,
+    private val ttsManager: TtsManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LearnWordsUiState())
     val uiState: StateFlow<LearnWordsUiState> = _uiState
+
+    // Review words can come from different topics/languages, so the voice is
+    // resolved per-word rather than once for the whole session.
+    private val voiceCache = mutableMapOf<Long, String?>()
 
     private var queue: MutableList<Word> = mutableListOf()
 
@@ -78,6 +90,18 @@ class ReviewWordsViewModel @Inject constructor(
     fun removeCurrentFromReview() {
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch { submitAnswer.toggleReviewList(prompt.word, false) }
+    }
+
+    fun speak(text: String) {
+        val prompt = _uiState.value.prompt ?: return
+        viewModelScope.launch {
+            val voiceName = voiceCache.getOrPut(prompt.word.topicId) {
+                val topic = topicRepository.getTopic(prompt.word.topicId)
+                val languageId = topic?.let { sectionRepository.getSection(it.sectionId)?.languageId }
+                languageId?.let { languageRepository.getLanguage(it)?.voiceName }
+            }
+            ttsManager.speak(text, voiceName)
+        }
     }
 
     fun next() {

@@ -9,4 +9,5 @@ data class LanguageEntity(
     val profileId: Long,
     val name: String,
     val createdAt: Long = System.currentTimeMillis(),
+    val voiceName: String? = null,
 )

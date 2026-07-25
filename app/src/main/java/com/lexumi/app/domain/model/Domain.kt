@@ -2,7 +2,7 @@ package com.lexumi.app.domain.model
 
 data class UserProfile(val id: Long, val displayName: String)
 
-data class Language(val id: Long, val profileId: Long, val name: String)
+data class Language(val id: Long, val profileId: Long, val name: String, val voiceName: String? = null)
 
 data class Section(val id: Long, val languageId: Long, val name: String, val position: Int)
 

@@ -27,6 +27,7 @@ import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.LexumiTextField
 import com.lexumi.app.presentation.components.PillActionButton
+import com.lexumi.app.util.ImageCompressor
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,23 +44,18 @@ fun AddWordScreen(
     var ruleMenuExpanded by remember { mutableStateOf(false) }
 
     val error by viewModel.error.collectAsState()
-    val imageTooLarge by viewModel.imageTooLarge.collectAsState()
     val created by viewModel.created.collectAsState()
     val rules by viewModel.rules.collectAsState()
 
     LaunchedEffect(created) { if (created) onCreated() }
 
+    // Any picked image is automatically shrunk to fit under 100kb — no more
+    // rejecting the user's photo, we just compress it to a size that works.
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        if (bytes == null) return@rememberLauncherForActivityResult
-        if (bytes.size > MAX_WORD_IMAGE_BYTES) {
-            viewModel.onImageTooLarge()
-        } else {
-            val file = File(context.filesDir, "word_${System.currentTimeMillis()}.jpg")
-            file.writeBytes(bytes)
-            imagePath = file.absolutePath
-        }
+        val file = File(context.filesDir, "word_${System.currentTimeMillis()}.jpg")
+        val result = ImageCompressor.compressToFile(context, uri, file, MAX_WORD_IMAGE_BYTES)
+        if (result != null) imagePath = result.absolutePath
     }
 
     GradientBackground {
@@ -74,7 +70,14 @@ fun AddWordScreen(
             LexumiLogo(width = 160.dp)
             Spacer(Modifier.height(16.dp))
             Text("Додати слово", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
+
+            // Error (e.g. "such a word already exists") shown right here, above
+            // the word fields, so it's seen immediately instead of scrolled past.
+            if (error != null) {
+                Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(12.dp))
+            }
 
             Box(
                 modifier = Modifier
@@ -93,13 +96,6 @@ fun AddWordScreen(
                 } else {
                     Icon(imageVector = Icons.Filled.ImageIcon, contentDescription = "Додати картинку")
                 }
-            }
-            if (imageTooLarge) {
-                Text(
-                    "Картинка більша за 100кб — виберіть меншу",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
             }
             Spacer(Modifier.height(16.dp))
 
@@ -124,11 +120,6 @@ fun AddWordScreen(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-            }
-
-            if (error != null) {
-                Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(8.dp))
             }
 
             PillActionButton(

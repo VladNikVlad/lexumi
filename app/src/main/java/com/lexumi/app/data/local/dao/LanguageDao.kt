@@ -18,6 +18,9 @@ interface LanguageDao {
     @Insert
     suspend fun insert(language: LanguageEntity): Long
 
+    @Query("UPDATE languages SET voiceName = :voiceName WHERE id = :languageId")
+    suspend fun setVoice(languageId: Long, voiceName: String?)
+
     @Update
     suspend fun update(language: LanguageEntity)
 

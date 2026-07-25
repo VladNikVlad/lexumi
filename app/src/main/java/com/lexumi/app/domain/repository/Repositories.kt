@@ -15,6 +15,7 @@ interface LanguageRepository {
     suspend fun getLanguage(id: Long): Language?
     suspend fun exists(profileId: Long, name: String): Boolean
     suspend fun addLanguage(profileId: Long, name: String): Long
+    suspend fun setVoice(languageId: Long, voiceName: String?)
 }
 
 interface SectionRepository {
@@ -43,9 +44,11 @@ interface RuleRepository {
 interface WordRepository {
     fun observeWords(topicId: Long): Flow<List<Word>>
     suspend fun getWords(topicId: Long): List<Word>
+    suspend fun getWord(id: Long): Word?
     suspend fun exists(topicId: Long, term: String): Boolean
     suspend fun addWord(topicId: Long, imagePath: String?, term: String, translation: String, ruleId: Long?): Long
     suspend fun updateWord(word: Word)
+    suspend fun deleteWord(word: Word)
     fun observeReviewList(): Flow<List<Word>>
 }
 

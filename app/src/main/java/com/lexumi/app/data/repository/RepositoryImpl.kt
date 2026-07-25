@@ -10,7 +10,7 @@ import javax.inject.Inject
 
 // ---------- mappers ----------
 private fun UserProfileEntity.toDomain() = UserProfile(id, displayName)
-private fun LanguageEntity.toDomain() = Language(id, profileId, name)
+private fun LanguageEntity.toDomain() = Language(id, profileId, name, voiceName)
 private fun SectionEntity.toDomain() = Section(id, languageId, name, position)
 private fun TopicEntity.toDomain() = Topic(id, sectionId, name, position)
 private fun RuleEntity.toDomain() = Rule(id, languageId, name, text)
@@ -40,6 +40,7 @@ class LanguageRepositoryImpl @Inject constructor(private val dao: LanguageDao) :
     override suspend fun exists(profileId: Long, name: String): Boolean = dao.countByName(profileId, name) > 0
     override suspend fun addLanguage(profileId: Long, name: String): Long =
         dao.insert(LanguageEntity(profileId = profileId, name = name))
+    override suspend fun setVoice(languageId: Long, voiceName: String?) = dao.setVoice(languageId, voiceName)
 }
 
 class SectionRepositoryImpl @Inject constructor(private val dao: SectionDao) : SectionRepository {
@@ -78,6 +79,7 @@ class WordRepositoryImpl @Inject constructor(private val dao: WordDao) : WordRep
     override fun observeWords(topicId: Long): Flow<List<Word>> =
         dao.observeForTopic(topicId).map { list -> list.map { it.toDomain() } }
     override suspend fun getWords(topicId: Long): List<Word> = dao.getForTopic(topicId).map { it.toDomain() }
+    override suspend fun getWord(id: Long): Word? = dao.getById(id)?.toDomain()
     override suspend fun exists(topicId: Long, term: String): Boolean = dao.countByTerm(topicId, term) > 0
     override suspend fun addWord(topicId: Long, imagePath: String?, term: String, translation: String, ruleId: Long?): Long =
         dao.insert(WordEntity(topicId = topicId, imagePath = imagePath, term = term, translation = translation, ruleId = ruleId))
@@ -93,6 +95,16 @@ class WordRepositoryImpl @Inject constructor(private val dao: WordDao) : WordRep
         )
     }
     override fun observeReviewList(): Flow<List<Word>> = dao.observeReviewList().map { list -> list.map { it.toDomain() } }
+    override suspend fun deleteWord(word: Word) {
+        dao.delete(
+            WordEntity(
+                id = word.id, topicId = word.topicId, imagePath = word.imagePath, term = word.term,
+                translation = word.translation, ruleId = word.ruleId, level = word.level,
+                correctStreak = word.correctStreak, score = word.score, timesSeen = word.timesSeen,
+                inReviewList = word.inReviewList,
+            )
+        )
+    }
 }
 
 class ImageContentRepositoryImpl @Inject constructor(private val dao: ImageContentDao) : ImageContentRepository {

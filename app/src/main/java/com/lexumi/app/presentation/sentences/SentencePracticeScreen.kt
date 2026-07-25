@@ -1,14 +1,18 @@
 package com.lexumi.app.presentation.sentences
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lexumi.app.domain.model.AnswerCheck
@@ -16,6 +20,7 @@ import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiTextField
 import com.lexumi.app.presentation.components.PillActionButton
 import com.lexumi.app.presentation.theme.LexumiError
+import com.lexumi.app.presentation.theme.LexumiOutline
 import com.lexumi.app.presentation.theme.LexumiSuccess
 
 @Composable
@@ -26,6 +31,7 @@ fun SentencePracticeScreen(
     val state by viewModel.uiState.collectAsState()
     var answer by remember { mutableStateOf("") }
     LaunchedEffect(state.current) { answer = "" }
+    LaunchedEffect(state.current?.id) { state.current?.let { viewModel.speak(it.text) } }
 
     GradientBackground {
         Column(
@@ -48,6 +54,13 @@ fun SentencePracticeScreen(
             )
             Spacer(Modifier.height(24.dp))
             Text(sentence.text, style = MaterialTheme.typography.headlineMedium)
+            Spacer(Modifier.height(8.dp))
+            IconButton(
+                onClick = { viewModel.speak(sentence.text) },
+                modifier = Modifier.size(44.dp).background(Color.White.copy(alpha = 0.6f), CircleShape),
+            ) {
+                Icon(Icons.Filled.VolumeUp, contentDescription = "Прослухати ще раз", tint = LexumiOutline)
+            }
             Spacer(Modifier.height(20.dp))
 
             if (state.feedback == null) {

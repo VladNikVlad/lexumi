@@ -18,7 +18,9 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): LexumiDatabase =
-        Room.databaseBuilder(context, LexumiDatabase::class.java, LexumiDatabase.DATABASE_NAME).build()
+        Room.databaseBuilder(context, LexumiDatabase::class.java, LexumiDatabase.DATABASE_NAME)
+            .fallbackToDestructiveMigration() // pre-release schema iteration; wipes local data on version bumps
+            .build()
 
     @Provides fun provideUserProfileDao(db: LexumiDatabase): UserProfileDao = db.userProfileDao()
     @Provides fun provideLanguageDao(db: LexumiDatabase): LanguageDao = db.languageDao()

@@ -45,8 +45,10 @@ android {
 }
 
 dependencies {
-    // Core / Compose
+    // Material Components (needed for the XML Theme.Material3.* base theme)
     implementation("com.google.android.material:material:1.12.0")
+
+    // Core / Compose
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.activity:activity-compose:1.9.1")

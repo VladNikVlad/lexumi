@@ -5,12 +5,23 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lexumi.app.data.datastore.UserPreferences
 import com.lexumi.app.domain.model.AnswerCheck
+import com.lexumi.app.domain.model.Rule
 import com.lexumi.app.domain.model.Word
+import com.lexumi.app.domain.repository.LanguageRepository
+import com.lexumi.app.domain.repository.RuleRepository
+import com.lexumi.app.domain.repository.SectionRepository
+import com.lexumi.app.domain.repository.TopicRepository
+import com.lexumi.app.domain.repository.WordRepository
 import com.lexumi.app.domain.usecase.*
+import com.lexumi.app.util.TtsManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -34,6 +45,7 @@ data class LearnWordsUiState(
     val completedCount: Int = 0,
     val totalCount: Int = 0,
     val sessionDone: Boolean = false,
+    val editError: String? = null,
 )
 
 @HiltViewModel
@@ -41,7 +53,15 @@ class LearnWordsViewModel @Inject constructor(
     private val getSessionWords: GetSessionWordsUseCase,
     private val buildMultipleChoice: BuildMultipleChoiceUseCase,
     private val submitAnswer: SubmitWordAnswerUseCase,
+    private val editWord: EditWordUseCase,
+    private val deleteWord: DeleteWordUseCase,
+    private val wordRepository: WordRepository,
+    private val topicRepository: TopicRepository,
+    private val sectionRepository: SectionRepository,
+    private val languageRepository: LanguageRepository,
+    ruleRepository: RuleRepository,
     private val prefs: UserPreferences,
+    private val ttsManager: TtsManager,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -50,15 +70,30 @@ class LearnWordsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(LearnWordsUiState())
     val uiState: StateFlow<LearnWordsUiState> = _uiState
 
-    private var queue: MutableList<Word> = mutableListOf()
+    private val _languageId = MutableStateFlow<Long?>(null)
+    val rules: StateFlow<List<Rule>> = _languageId
+        .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else ruleRepository.observeRules(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** The language's auto-assigned TTS voice, so words are read aloud in a natural voice for that language. */
+    private val _voiceName = MutableStateFlow<String?>(null)
+    val voiceName: StateFlow<String?> = _voiceName
+
+    private var queue: MutableList<Long> = mutableListOf()
 
     init {
         viewModelScope.launch {
             prefs.setLastSession(topicId, "learn_words")
             val wordsPerSession = prefs.wordsPerSession.first()
-            queue = getSessionWords(topicId, wordsPerSession).toMutableList()
+            val repetitions = prefs.repetitions.first()
+            queue = getSessionWords(topicId, wordsPerSession, repetitions).toMutableList()
             _uiState.value = _uiState.value.copy(totalCount = queue.size, loading = false)
             advance()
+
+            val topic = topicRepository.getTopic(topicId)
+            val languageId = topic?.let { sectionRepository.getSection(it.sectionId)?.languageId }
+            _languageId.value = languageId
+            _voiceName.value = languageId?.let { languageRepository.getLanguage(it)?.voiceName }
         }
     }
 
@@ -68,7 +103,11 @@ class LearnWordsViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(sessionDone = true, prompt = null)
             return
         }
-        val word = queue.removeAt(0)
+        // Re-fetch the word fresh each time: an earlier repeat in this same
+        // session may have changed its level/score, and the prompt should
+        // reflect that current state, not a stale snapshot from the start.
+        val wordId = queue.removeAt(0)
+        val word = wordRepository.getWord(wordId) ?: run { advance(); return }
         val askTermFirst = word.askTermFirst()
         val choices = if (word.level == 0) buildMultipleChoice(word, askTermFirst) else null
         _uiState.value = _uiState.value.copy(
@@ -108,6 +147,35 @@ class LearnWordsViewModel @Inject constructor(
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch { submitAnswer.toggleReviewList(prompt.word, true) }
     }
+
+    /** Saves edits (text and/or picture) to the word currently on screen without losing its learning progress. */
+    fun editCurrentWord(term: String, translation: String, imagePath: String?, ruleId: Long?) {
+        val prompt = _uiState.value.prompt ?: return
+        viewModelScope.launch {
+            when (val result = editWord(prompt.word, term, translation, imagePath, ruleId)) {
+                is AddResult.Success -> {
+                    val updated = prompt.word.copy(term = term.trim(), translation = translation.trim(), imagePath = imagePath, ruleId = ruleId)
+                    _uiState.value = _uiState.value.copy(prompt = prompt.copy(word = updated), editError = null)
+                }
+                AddResult.AlreadyExists -> _uiState.value = _uiState.value.copy(editError = "Таке слово вже є в цій темі")
+                AddResult.Blank -> _uiState.value = _uiState.value.copy(editError = "Заповніть слово і переклад")
+            }
+        }
+    }
+
+    /** Deletes the word currently on screen (and any other queued repeats of it) and moves on. */
+    fun deleteCurrentWord() {
+        val prompt = _uiState.value.prompt ?: return
+        viewModelScope.launch {
+            queue.removeAll { it == prompt.word.id }
+            deleteWord(prompt.word)
+            advance()
+        }
+    }
+
+    fun clearEditError() { _uiState.value = _uiState.value.copy(editError = null) }
+
+    fun speak(text: String) { ttsManager.speak(text, _voiceName.value) }
 
     fun next() {
         viewModelScope.launch { advance() }

@@ -11,6 +11,7 @@ fun LearnWordsScreen(
     viewModel: LearnWordsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val rules by viewModel.rules.collectAsState()
     WordSessionBody(
         state = state,
         onDone = onSessionDone,
@@ -18,5 +19,10 @@ fun LearnWordsScreen(
         onSubmitTyped = viewModel::submitTyped,
         onAddToReview = viewModel::addCurrentToReview,
         onNext = viewModel::next,
+        availableRules = rules,
+        onEditWord = { term, translation, imagePath, ruleId -> viewModel.editCurrentWord(term, translation, imagePath, ruleId) },
+        onDeleteWord = { viewModel.deleteCurrentWord() },
+        onClearEditError = viewModel::clearEditError,
+        onSpeak = viewModel::speak,
     )
 }
