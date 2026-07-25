@@ -31,6 +31,7 @@ class ProfileRepositoryImpl @Inject constructor(private val dao: UserProfileDao)
     override suspend fun createProfile(name: String): Long = dao.insert(UserProfileEntity(displayName = name))
     override suspend fun deleteProfile(profile: UserProfile) = dao.delete(UserProfileEntity(profile.id, profile.displayName))
     override suspend fun profileCount(): Int = dao.count()
+    override suspend fun profileExists(id: Long): Boolean = dao.getById(id) != null
 }
 
 class LanguageRepositoryImpl @Inject constructor(private val dao: LanguageDao) : LanguageRepository {

@@ -8,6 +8,7 @@ interface ProfileRepository {
     suspend fun createProfile(name: String): Long
     suspend fun deleteProfile(profile: UserProfile)
     suspend fun profileCount(): Int
+    suspend fun profileExists(id: Long): Boolean
 }
 
 interface LanguageRepository {

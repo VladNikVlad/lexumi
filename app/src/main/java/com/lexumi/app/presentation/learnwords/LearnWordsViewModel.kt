@@ -14,6 +14,7 @@ import com.lexumi.app.domain.repository.TopicRepository
 import com.lexumi.app.domain.repository.WordRepository
 import com.lexumi.app.domain.usecase.*
 import com.lexumi.app.util.TtsManager
+import com.lexumi.app.util.SoundFeedbackPlayer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -62,6 +63,7 @@ class LearnWordsViewModel @Inject constructor(
     ruleRepository: RuleRepository,
     private val prefs: UserPreferences,
     private val ttsManager: TtsManager,
+    private val soundFeedbackPlayer: SoundFeedbackPlayer,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -122,6 +124,7 @@ class LearnWordsViewModel @Inject constructor(
             val correctText = if (prompt.askTermFirst) prompt.word.translation else prompt.word.term
             val wasCorrect = chosenText == correctText
             submitAnswer.submitChoice(prompt.word, wasCorrect)
+            if (wasCorrect) soundFeedbackPlayer.playCorrect() else soundFeedbackPlayer.playWrong()
             _uiState.value = _uiState.value.copy(
                 feedback = if (wasCorrect) WordFeedback.Correct else WordFeedback.Wrong(correctText),
                 completedCount = _uiState.value.completedCount + 1,
@@ -134,6 +137,7 @@ class LearnWordsViewModel @Inject constructor(
         viewModelScope.launch {
             val expected = if (prompt.askTermFirst) prompt.word.translation else prompt.word.term
             val (_, check) = submitAnswer.submitTypedAnswer(prompt.word, userInput, expected)
+            if (check is AnswerCheck.Wrong) soundFeedbackPlayer.playWrong() else soundFeedbackPlayer.playCorrect()
             val feedback = when (check) {
                 is AnswerCheck.Correct -> WordFeedback.Correct
                 is AnswerCheck.OneLetterTypo -> WordFeedback.OneLetterTypo(check.correctSpelling)

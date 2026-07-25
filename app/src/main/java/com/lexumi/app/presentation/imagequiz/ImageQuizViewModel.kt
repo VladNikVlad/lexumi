@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lexumi.app.domain.model.ImageContent
 import com.lexumi.app.domain.repository.ImageContentRepository
+import com.lexumi.app.util.SoundFeedbackPlayer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +27,7 @@ data class ImageQuizUiState(
 @HiltViewModel
 class ImageQuizViewModel @Inject constructor(
     private val imageRepository: ImageContentRepository,
+    private val soundFeedbackPlayer: SoundFeedbackPlayer,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -60,6 +62,7 @@ class ImageQuizViewModel @Inject constructor(
     fun submit(answer: String) {
         val prompt = _uiState.value.prompt ?: return
         val correct = answer == prompt.image.translation
+        if (correct) soundFeedbackPlayer.playCorrect() else soundFeedbackPlayer.playWrong()
         _uiState.value = _uiState.value.copy(feedbackCorrect = correct, completed = _uiState.value.completed + 1)
     }
 

@@ -11,6 +11,7 @@ import com.lexumi.app.domain.repository.SentenceRepository
 import com.lexumi.app.domain.repository.TopicRepository
 import com.lexumi.app.domain.usecase.AnswerChecker
 import com.lexumi.app.util.TtsManager
+import com.lexumi.app.util.SoundFeedbackPlayer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +35,7 @@ class SentencePracticeViewModel @Inject constructor(
     private val sectionRepository: SectionRepository,
     private val languageRepository: LanguageRepository,
     private val ttsManager: TtsManager,
+    private val soundFeedbackPlayer: SoundFeedbackPlayer,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -77,6 +79,7 @@ class SentencePracticeViewModel @Inject constructor(
             }
         } ?: sentence.translations.firstOrNull() ?: ""
         val check = AnswerChecker.check(answer, best)
+        if (check is AnswerCheck.Wrong) soundFeedbackPlayer.playWrong() else soundFeedbackPlayer.playCorrect()
         _uiState.value = _uiState.value.copy(feedback = check, completed = _uiState.value.completed + 1)
     }
 
