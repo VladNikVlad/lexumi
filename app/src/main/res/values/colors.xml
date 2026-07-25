@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="lexumi_indigo">#2E2470</color>
+    <color name="lexumi_purple_light">#C4B5FD</color>
+    <color name="lexumi_lilac">#EDE9FE</color>
+    <color name="lexumi_teal_light">#A7F3EB</color>
+    <color name="lexumi_bg_start">#F3EEFD</color>
+    <color name="lexumi_bg_end">#DFF7F3</color>
+    <color name="lexumi_outline">#8B7FD1</color>
+    <color name="white">#FFFFFF</color>
+</resources>

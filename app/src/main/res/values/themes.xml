@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Lexumi" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
+
+    <style name="Theme.Lexumi.Splash" parent="Theme.Lexumi">
+        <item name="android:windowBackground">@drawable/ic_launcher_background</item>
+    </style>
+</resources>

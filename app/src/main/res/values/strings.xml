@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lexumi</string>
+    <string name="tagline">Language Learning. Redefined.</string>
+
+    <!-- Splash -->
+    <string name="loading">Завантаження…</string>
+
+    <!-- Language menu -->
+    <string name="add_language">Додати мову</string>
+    <string name="choose_language">Вибрати мову</string>
+    <string name="new_language_hint">Введіть назву мови</string>
+    <string name="language_already_exists">Така мова вже існує</string>
+
+    <!-- Sections / Topics -->
+    <string name="add_section">Додати розділ</string>
+    <string name="choose_section">Вибрати розділ</string>
+    <string name="section_already_exists">Такий розділ у цій мові вже існує</string>
+    <string name="add_topic">Додати тему</string>
+    <string name="section_name">Новий розділ</string>
+    <string name="topic_already_exists">Така тема в цьому розділі вже існує</string>
+
+    <!-- Add content menu -->
+    <string name="add_rule">Додати правило</string>
+    <string name="add_word">Додати слово</string>
+    <string name="add_image">Додати картинку</string>
+    <string name="add_video">Додати відео</string>
+    <string name="add_audio_dialog">Додати аудіо діалог</string>
+    <string name="add_sentence">Додати речення</string>
+    <string name="add_story">Додати історію</string>
+
+    <!-- Home -->
+    <string name="learn">Вчитись</string>
+    <string name="continue_last">Продовжити останнє навчання</string>
+    <string name="repeat_words">Повторити слова</string>
+
+    <!-- Topic actions -->
+    <string name="learn_rules">Вивчати правила</string>
+    <string name="learn_words">Вивчати слова</string>
+    <string name="image_tests">Тести по картинкам</string>
+    <string name="watch_video">Дивитися відео</string>
+    <string name="listen_dialogs">Слухати діалоги</string>
+    <string name="learn_sentences">Вивчати речення</string>
+    <string name="read_stories">Читати історії</string>
+
+    <!-- Settings -->
+    <string name="settings">Налаштування</string>
+    <string name="words_per_session">Слів за сесію</string>
+    <string name="repetitions">Кількість повторень</string>
+    <string name="reminders">Нагадування</string>
+    <string name="switch_user">Змінити користувача</string>
+    <string name="logout">Вийти</string>
+    <string name="delete_all_data">Видалити всі дані</string>
+    <string name="about_app">Про застосунок</string>
+</resources>
