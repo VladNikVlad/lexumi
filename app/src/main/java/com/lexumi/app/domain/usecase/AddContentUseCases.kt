@@ -6,11 +6,13 @@ import javax.inject.Inject
 
 class AddRuleUseCase @Inject constructor(private val repo: RuleRepository) {
     // Rules are checked for uniqueness across the whole language, not per topic (point 7).
-    suspend operator fun invoke(languageId: Long, name: String, text: String): AddResult {
+    // Either typed text or an attached photo (or both) is enough — a photo can carry
+    // a whole grammar table that would be awkward to retype.
+    suspend operator fun invoke(languageId: Long, name: String, text: String, imagePath: String? = null): AddResult {
         val trimmedName = name.trim()
-        if (trimmedName.isEmpty() || text.isBlank()) return AddResult.Blank
+        if (trimmedName.isEmpty() || (text.isBlank() && imagePath == null)) return AddResult.Blank
         if (repo.exists(languageId, trimmedName)) return AddResult.AlreadyExists
-        return AddResult.Success(repo.addRule(languageId, trimmedName, text))
+        return AddResult.Success(repo.addRule(languageId, trimmedName, text, imagePath))
     }
 }
 

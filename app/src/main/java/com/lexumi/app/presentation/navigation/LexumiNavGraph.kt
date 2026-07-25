@@ -122,10 +122,12 @@ fun LexumiNavGraph() {
             AddContentMenuScreen(
                 onAddRule = { navController.navigate(Screen.AddRule.build(topicId)) },
                 onAddWord = { navController.navigate(Screen.AddWord.build(topicId)) },
+                onBulkAddWords = { navController.navigate(Screen.BulkAddWords.build(topicId)) },
                 onAddImage = { navController.navigate(Screen.AddImage.build(topicId)) },
                 onAddVideo = { navController.navigate(Screen.AddVideo.build(topicId)) },
                 onAddAudioDialog = { navController.navigate(Screen.AddAudioDialog.build(topicId)) },
                 onAddSentence = { navController.navigate(Screen.AddSentence.build(topicId)) },
+                onBulkAddSentences = { navController.navigate(Screen.BulkAddSentences.build(topicId)) },
                 onAddStory = { navController.navigate(Screen.AddStory.build(topicId)) },
                 onDone = {
                     navController.navigate(Screen.TopicAction.build(topicId)) {
@@ -141,6 +143,9 @@ fun LexumiNavGraph() {
         composable(Screen.AddWord.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
             AddWordScreen(onCreated = { navController.popBackStack() })
         }
+        composable(Screen.BulkAddWords.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
+            BulkAddWordsScreen(onDone = { navController.popBackStack() })
+        }
         composable(Screen.AddImage.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
             AddImageContentScreen(onCreated = { navController.popBackStack() })
         }
@@ -152,6 +157,9 @@ fun LexumiNavGraph() {
         }
         composable(Screen.AddSentence.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
             AddSentenceScreen(onCreated = { navController.popBackStack() })
+        }
+        composable(Screen.BulkAddSentences.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
+            BulkAddSentencesScreen(onDone = { navController.popBackStack() })
         }
         composable(Screen.AddStory.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
             AddStoryScreen(onCreated = { navController.popBackStack() })

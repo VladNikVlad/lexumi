@@ -1,7 +1,9 @@
 package com.lexumi.app.presentation.rules
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -12,9 +14,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.rememberAsyncImagePainter
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 
@@ -45,8 +49,18 @@ fun RulesListScreen(
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Text(rule.name, style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(4.dp))
-                        Text(rule.text, style = MaterialTheme.typography.bodyMedium)
+                        if (rule.imagePath != null) {
+                            Spacer(Modifier.height(8.dp))
+                            Image(
+                                painter = rememberAsyncImagePainter(rule.imagePath),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(12.dp)),
+                            )
+                        }
+                        if (rule.text.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(rule.text, style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
             }

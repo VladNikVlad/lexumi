@@ -27,4 +27,5 @@ data class RuleEntity(
     val languageId: Long,
     val name: String,
     val text: String,
+    val imagePath: String? = null,
 )

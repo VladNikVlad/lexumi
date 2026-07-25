@@ -81,6 +81,9 @@ dependencies {
     // Image loading (word / topic pictures, up to 100kb)
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // On-device OCR (bulk word/sentence/rule entry from a photo) — free, offline, no server
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 

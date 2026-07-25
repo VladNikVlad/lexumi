@@ -39,7 +39,7 @@ interface RuleRepository {
     suspend fun getRulesByIds(ids: List<Long>): List<Rule>
     suspend fun getRule(id: Long): Rule?
     suspend fun exists(languageId: Long, name: String): Boolean
-    suspend fun addRule(languageId: Long, name: String, text: String): Long
+    suspend fun addRule(languageId: Long, name: String, text: String, imagePath: String? = null): Long
 }
 
 interface WordRepository {

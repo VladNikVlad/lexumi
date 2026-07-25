@@ -8,7 +8,7 @@ data class Section(val id: Long, val languageId: Long, val name: String, val pos
 
 data class Topic(val id: Long, val sectionId: Long, val name: String, val position: Int)
 
-data class Rule(val id: Long, val languageId: Long, val name: String, val text: String)
+data class Rule(val id: Long, val languageId: Long, val name: String, val text: String, val imagePath: String? = null)
 
 /** Which of the four answer slots is correct, in multiple-choice (level 0) mode. */
 data class MultipleChoiceOption(val text: String, val isCorrect: Boolean)

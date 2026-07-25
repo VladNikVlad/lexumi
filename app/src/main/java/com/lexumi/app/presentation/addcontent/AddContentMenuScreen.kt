@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Text
@@ -30,10 +31,12 @@ import com.lexumi.app.presentation.components.PillActionButton
 fun AddContentMenuScreen(
     onAddRule: () -> Unit,
     onAddWord: () -> Unit,
+    onBulkAddWords: () -> Unit,
     onAddImage: () -> Unit,
     onAddVideo: () -> Unit,
     onAddAudioDialog: () -> Unit,
     onAddSentence: () -> Unit,
+    onBulkAddSentences: () -> Unit,
     onAddStory: () -> Unit,
     onDone: () -> Unit,
 ) {
@@ -50,10 +53,12 @@ fun AddContentMenuScreen(
             Spacer(Modifier.height(24.dp))
             PillActionButton(text = "Додати правило", icon = Icons.Filled.MenuBook, onClick = onAddRule, modifier = itemSpacing)
             PillActionButton(text = "Додати слово", icon = Icons.Filled.Edit, onClick = onAddWord, modifier = itemSpacing)
+            PillActionButton(text = "Додати кілька слів одразу", icon = Icons.Filled.PlaylistAdd, onClick = onBulkAddWords, modifier = itemSpacing)
             PillActionButton(text = "Додати картинку", icon = Icons.Filled.Image, onClick = onAddImage, modifier = itemSpacing)
             PillActionButton(text = "Додати відео", icon = Icons.Filled.VideoLibrary, onClick = onAddVideo, modifier = itemSpacing)
             PillActionButton(text = "Додати аудіо діалог", icon = Icons.Filled.Headphones, onClick = onAddAudioDialog, modifier = itemSpacing)
             PillActionButton(text = "Додати речення", icon = Icons.Filled.TextFields, onClick = onAddSentence, modifier = itemSpacing)
+            PillActionButton(text = "Додати кілька речень одразу", icon = Icons.Filled.PlaylistAdd, onClick = onBulkAddSentences, modifier = itemSpacing)
             PillActionButton(text = "Додати історію", icon = Icons.Filled.AutoStories, onClick = onAddStory, modifier = itemSpacing)
             Spacer(Modifier.height(10.dp))
             TextButton(onClick = onDone) { Text("Готово, перейти до теми") }

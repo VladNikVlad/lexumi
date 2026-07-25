@@ -36,6 +36,9 @@ sealed class Screen(val route: String) {
     data object AddWord : Screen("add_word/{topicId}") {
         fun build(topicId: Long) = "add_word/$topicId"
     }
+    data object BulkAddWords : Screen("bulk_add_words/{topicId}") {
+        fun build(topicId: Long) = "bulk_add_words/$topicId"
+    }
     data object AddImage : Screen("add_image/{topicId}") {
         fun build(topicId: Long) = "add_image/$topicId"
     }
@@ -47,6 +50,9 @@ sealed class Screen(val route: String) {
     }
     data object AddSentence : Screen("add_sentence/{topicId}") {
         fun build(topicId: Long) = "add_sentence/$topicId"
+    }
+    data object BulkAddSentences : Screen("bulk_add_sentences/{topicId}") {
+        fun build(topicId: Long) = "bulk_add_sentences/$topicId"
     }
     data object AddStory : Screen("add_story/{topicId}") {
         fun build(topicId: Long) = "add_story/$topicId"

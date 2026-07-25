@@ -13,7 +13,7 @@ private fun UserProfileEntity.toDomain() = UserProfile(id, displayName)
 private fun LanguageEntity.toDomain() = Language(id, profileId, name, voiceName)
 private fun SectionEntity.toDomain() = Section(id, languageId, name, position)
 private fun TopicEntity.toDomain() = Topic(id, sectionId, name, position)
-private fun RuleEntity.toDomain() = Rule(id, languageId, name, text)
+private fun RuleEntity.toDomain() = Rule(id, languageId, name, text, imagePath)
 private fun WordEntity.toDomain() = Word(id, topicId, imagePath, term, translation, ruleId, level, correctStreak, score, timesSeen, inReviewList)
 private fun ImageContentEntity.toDomain() = ImageContent(id, topicId, name, imagePath, translation)
 private fun VideoEntity.toDomain() = VideoContent(id, topicId, name, youtubeUrl, originalText, translationText, ruleIds)
@@ -72,8 +72,8 @@ class RuleRepositoryImpl @Inject constructor(private val dao: RuleDao) : RuleRep
         if (ids.isEmpty()) emptyList() else dao.getByIds(ids).map { it.toDomain() }
     override suspend fun getRule(id: Long): Rule? = dao.getById(id)?.toDomain()
     override suspend fun exists(languageId: Long, name: String): Boolean = dao.countByName(languageId, name) > 0
-    override suspend fun addRule(languageId: Long, name: String, text: String): Long =
-        dao.insert(RuleEntity(languageId = languageId, name = name, text = text))
+    override suspend fun addRule(languageId: Long, name: String, text: String, imagePath: String?): Long =
+        dao.insert(RuleEntity(languageId = languageId, name = name, text = text, imagePath = imagePath))
 }
 
 class WordRepositoryImpl @Inject constructor(private val dao: WordDao) : WordRepository {
