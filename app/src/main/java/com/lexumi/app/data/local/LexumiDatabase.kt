@@ -21,7 +21,7 @@ import com.lexumi.app.data.local.entity.*
         SentenceEntity::class,
         StoryEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

@@ -47,6 +47,8 @@ android {
 dependencies {
     // Material Components (needed for the XML Theme.Material3.* base theme)
     implementation("com.google.android.material:material:1.12.0")
+    // Per-app language switching (Settings -> Мова)
+    implementation("androidx.appcompat:appcompat:1.7.0")
 
     // Core / Compose
     implementation("androidx.core:core-ktx:1.13.1")

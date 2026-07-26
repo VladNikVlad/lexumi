@@ -37,14 +37,15 @@ class AddImageContentUseCase @Inject constructor(private val repo: ImageContentR
 
 class AddVideoUseCase @Inject constructor(private val repo: VideoRepository) {
     suspend operator fun invoke(
-        topicId: Long, name: String, youtubeUrl: String, originalText: String?,
+        topicId: Long, name: String, youtubeUrl: String?, localVideoPath: String?, originalText: String?,
         translationText: String?, ruleIds: List<Long>, questions: List<TestQuestion>,
     ): AddResult {
         val trimmedName = name.trim()
-        if (trimmedName.isEmpty() || youtubeUrl.isBlank()) return AddResult.Blank
+        val trimmedUrl = youtubeUrl?.trim().takeUnless { it.isNullOrBlank() }
+        if (trimmedName.isEmpty() || (trimmedUrl == null && localVideoPath == null)) return AddResult.Blank
         if (repo.exists(topicId, trimmedName)) return AddResult.AlreadyExists
         return AddResult.Success(
-            repo.addVideo(topicId, trimmedName, youtubeUrl.trim(), originalText, translationText, ruleIds, questions)
+            repo.addVideo(topicId, trimmedName, trimmedUrl, localVideoPath, originalText, translationText, ruleIds, questions)
         )
     }
 }

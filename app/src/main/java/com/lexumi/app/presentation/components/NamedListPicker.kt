@@ -16,7 +16,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.lexumi.app.R
 
 @Composable
 fun NamedListPicker(
@@ -32,7 +34,7 @@ fun NamedListPicker(
         Text(text = title, style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(16.dp))
         if (items.isEmpty()) {
-            Text("Тут поки що порожньо", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.empty_list_placeholder), style = MaterialTheme.typography.bodyMedium)
         }
         items.forEach { item ->
             Card(

@@ -3,11 +3,20 @@
     <string name="app_name">Lexumi</string>
     <string name="tagline">Language Learning. Redefined.</string>
 
-    <!-- Splash -->
-    <string name="loading">Завантаження…</string>
+    <!-- Common -->
+    <string name="done">Готово</string>
+    <string name="cancel">Скасувати</string>
+    <string name="save">Зберегти</string>
+    <string name="delete">Видалити</string>
+    <string name="edit">Редагувати</string>
+
+    <!-- Welcome -->
+    <string name="welcome_name_prompt">Як вас звати?</string>
+    <string name="welcome_button">Welcome</string>
+    <string name="welcome_button_subtitle">Start Learning</string>
 
     <!-- Language menu -->
-    <string name="add_language">Додати мову</string>
+    <string name="add_language">Додати нову мову</string>
     <string name="choose_language">Вибрати мову</string>
     <string name="new_language_hint">Введіть назву мови</string>
     <string name="language_already_exists">Така мова вже існує</string>
@@ -15,41 +24,60 @@
     <!-- Sections / Topics -->
     <string name="add_section">Додати розділ</string>
     <string name="choose_section">Вибрати розділ</string>
+    <string name="choose_topic">Вибрати тему</string>
     <string name="section_already_exists">Такий розділ у цій мові вже існує</string>
     <string name="add_topic">Додати тему</string>
-    <string name="section_name">Новий розділ</string>
+    <string name="new_section_title">Новий розділ</string>
+    <string name="new_topic_title">Нова тема</string>
+    <string name="section_name_label">Назва розділу</string>
+    <string name="topic_name_label">Назва теми</string>
     <string name="topic_already_exists">Така тема в цьому розділі вже існує</string>
+    <string name="empty_list_placeholder">Тут поки що порожньо</string>
 
     <!-- Add content menu -->
+    <string name="add_content_title">Додати контент</string>
     <string name="add_rule">Додати правило</string>
     <string name="add_word">Додати слово</string>
+    <string name="bulk_add_words">Додати кілька слів одразу</string>
     <string name="add_image">Додати картинку</string>
     <string name="add_video">Додати відео</string>
     <string name="add_audio_dialog">Додати аудіо діалог</string>
     <string name="add_sentence">Додати речення</string>
+    <string name="bulk_add_sentences">Додати кілька речень одразу</string>
     <string name="add_story">Додати історію</string>
+    <string name="done_go_to_topic">Готово, перейти до теми</string>
 
     <!-- Home -->
     <string name="learn">Вчитись</string>
-    <string name="continue_last">Продовжити останнє навчання</string>
+    <string name="add_new_section">Додати</string>
+    <string name="add_new_section_subtitle">новий розділ</string>
+    <string name="continue_learning">Продовжити навчання</string>
+    <string name="choose_other_section">Вибрати інший розділ</string>
     <string name="repeat_words">Повторити слова</string>
 
     <!-- Topic actions -->
     <string name="learn_rules">Вивчати правила</string>
-    <string name="learn_words">Вивчати слова</string>
-    <string name="image_tests">Тести по картинкам</string>
+    <string name="learn_words">Вчити слова</string>
+    <string name="image_tests">Тест по картках</string>
     <string name="watch_video">Дивитися відео</string>
     <string name="listen_dialogs">Слухати діалоги</string>
-    <string name="learn_sentences">Вивчати речення</string>
-    <string name="read_stories">Читати історії</string>
+    <string name="learn_sentences">Речення</string>
+    <string name="read_stories">Читати текст</string>
+    <string name="add_more_content">+ Додати ще контент до теми</string>
 
     <!-- Settings -->
     <string name="settings">Налаштування</string>
+    <string name="app_language">Мова застосунку</string>
     <string name="words_per_session">Слів за сесію</string>
     <string name="repetitions">Кількість повторень</string>
-    <string name="reminders">Нагадування</string>
-    <string name="switch_user">Змінити користувача</string>
+    <string name="reminders">Нагадування про навчання</string>
+    <string name="profile_section">Профіль</string>
+    <string name="switch_user">Змінити користувача / додати новий</string>
+    <string name="new_profile_name_hint">Ім\'я нового профілю</string>
+    <string name="create_profile">Створити профіль</string>
     <string name="logout">Вийти</string>
     <string name="delete_all_data">Видалити всі дані</string>
+    <string name="delete_all_data_confirm">Це видалить усі мови, розділи, теми і слова. Ви впевнені?</string>
+    <string name="yes_delete">Так, видалити</string>
     <string name="about_app">Про застосунок</string>
 </resources>

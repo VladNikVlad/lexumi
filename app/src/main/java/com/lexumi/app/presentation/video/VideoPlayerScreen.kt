@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -19,7 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.PillActionButton
 
@@ -42,14 +47,28 @@ fun VideoPlayerScreen(
             Text(video.name, style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(16.dp))
 
-            PillActionButton(
-                text = "Дивитися на YouTube",
-                icon = Icons.Filled.PlayCircle,
-                onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(video.youtubeUrl)))
-                },
-            )
-            Spacer(Modifier.height(20.dp))
+            if (video.localVideoPath != null) {
+                // A video the user uploaded themselves — plays right here, offline.
+                val player = remember(video.localVideoPath) {
+                    ExoPlayer.Builder(context).build().apply {
+                        setMediaItem(MediaItem.fromUri(Uri.parse(video.localVideoPath)))
+                        prepare()
+                    }
+                }
+                DisposableEffect(Unit) { onDispose { player.release() } }
+                AndroidView(
+                    factory = { PlayerView(it).apply { this.player = player } },
+                    modifier = Modifier.fillMaxWidth().height(220.dp),
+                )
+                Spacer(Modifier.height(16.dp))
+            } else if (video.youtubeUrl != null) {
+                PillActionButton(
+                    text = "Дивитися на YouTube",
+                    icon = Icons.Filled.PlayCircle,
+                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(video.youtubeUrl))) },
+                )
+                Spacer(Modifier.height(20.dp))
+            }
 
             if (state.rules.isNotEmpty()) {
                 Text("Пов'язані правила: " + state.rules.joinToString(", ") { it.name }, style = MaterialTheme.typography.bodyMedium)

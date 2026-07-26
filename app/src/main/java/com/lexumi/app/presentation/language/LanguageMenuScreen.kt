@@ -17,7 +17,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.lexumi.app.R
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.PillActionButton
@@ -57,7 +59,7 @@ fun LanguageMenuScreen(
             }
 
             PillActionButton(
-                text = "Додати нову мову",
+                text = stringResource(R.string.add_language),
                 icon = Icons.Filled.Add,
                 onClick = onAddLanguage,
             )

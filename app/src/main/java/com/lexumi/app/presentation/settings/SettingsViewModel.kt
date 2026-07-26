@@ -1,5 +1,7 @@
 package com.lexumi.app.presentation.settings
 
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lexumi.app.data.datastore.UserPreferences
@@ -41,6 +43,16 @@ class SettingsViewModel @Inject constructor(
 
     private val _dataCleared = MutableStateFlow(false)
     val dataCleared: StateFlow<Boolean> = _dataCleared
+
+    /** "Мова застосунку" — switches the UI language app-wide via AndroidX per-app language support. */
+    fun setAppLanguage(languageTag: String) {
+        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(languageTag))
+    }
+
+    fun currentAppLanguageTag(): String {
+        val locales = AppCompatDelegate.getApplicationLocales()
+        return if (locales.isEmpty) "uk" else locales[0]?.language ?: "uk"
+    }
 
     fun setWordsPerSession(count: Int) = viewModelScope.launch { prefs.setWordsPerSession(count) }
     fun setRepetitions(count: Int) = viewModelScope.launch { prefs.setRepetitions(count) }

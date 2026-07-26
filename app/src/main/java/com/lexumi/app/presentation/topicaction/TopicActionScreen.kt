@@ -21,8 +21,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.lexumi.app.R
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.PillActionButton
@@ -56,16 +58,16 @@ fun TopicActionScreen(
             androidx.compose.material3.Text(text = topicName, style = androidx.compose.material3.MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(20.dp))
 
-            PillActionButton(text = "Вивчати правила", icon = Icons.Filled.MenuBook, onClick = onLearnRules, modifier = spacing)
-            if (availability.hasWords) PillActionButton(text = "Вчити слова", icon = Icons.Filled.Edit, onClick = onLearnWords, modifier = spacing)
-            if (availability.hasVideos) PillActionButton(text = "Дивитися відео", icon = Icons.Filled.PlayArrow, onClick = onWatchVideo, modifier = spacing)
-            if (availability.hasAudio) PillActionButton(text = "Слухати діалоги", icon = Icons.Filled.Headphones, onClick = onListenDialogs, modifier = spacing)
-            if (availability.hasStories) PillActionButton(text = "Читати текст", icon = Icons.Filled.AutoStories, onClick = onReadStories, modifier = spacing)
-            if (availability.hasImages) PillActionButton(text = "Тест по картках", icon = Icons.Filled.ViewModule, onClick = onImageTests, modifier = spacing)
-            if (availability.hasSentences) PillActionButton(text = "Речення", icon = Icons.Filled.TextFields, onClick = onSentences, modifier = spacing)
+            PillActionButton(text = stringResource(R.string.learn_rules), icon = Icons.Filled.MenuBook, onClick = onLearnRules, modifier = spacing)
+            if (availability.hasWords) PillActionButton(text = stringResource(R.string.learn_words), icon = Icons.Filled.Edit, onClick = onLearnWords, modifier = spacing)
+            if (availability.hasVideos) PillActionButton(text = stringResource(R.string.watch_video), icon = Icons.Filled.PlayArrow, onClick = onWatchVideo, modifier = spacing)
+            if (availability.hasAudio) PillActionButton(text = stringResource(R.string.listen_dialogs), icon = Icons.Filled.Headphones, onClick = onListenDialogs, modifier = spacing)
+            if (availability.hasStories) PillActionButton(text = stringResource(R.string.read_stories), icon = Icons.Filled.AutoStories, onClick = onReadStories, modifier = spacing)
+            if (availability.hasImages) PillActionButton(text = stringResource(R.string.image_tests), icon = Icons.Filled.ViewModule, onClick = onImageTests, modifier = spacing)
+            if (availability.hasSentences) PillActionButton(text = stringResource(R.string.learn_sentences), icon = Icons.Filled.TextFields, onClick = onSentences, modifier = spacing)
 
             androidx.compose.material3.TextButton(onClick = onAddContent) {
-                androidx.compose.material3.Text("+ Додати ще контент до теми")
+                androidx.compose.material3.Text(stringResource(R.string.add_more_content))
             }
         }
     }

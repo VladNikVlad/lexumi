@@ -45,17 +45,17 @@ class AddVideoViewModel @Inject constructor(
     }
 
     fun submit(
-        name: String, youtubeUrl: String, originalText: String?, translationText: String?,
+        name: String, youtubeUrl: String?, localVideoPath: String?, originalText: String?, translationText: String?,
         ruleIds: List<Long>, questions: List<Pair<String, Boolean>>,
     ) {
         viewModelScope.launch {
             val testQuestions = questions.map {
                 TestQuestion(0, it.first, QuestionAnswerType.TRUE_FALSE, it.second, emptyList())
             }
-            when (addVideo(topicId, name, youtubeUrl, originalText, translationText, ruleIds, testQuestions)) {
+            when (addVideo(topicId, name, youtubeUrl, localVideoPath, originalText, translationText, ruleIds, testQuestions)) {
                 is AddResult.Success -> _created.value = true
                 AddResult.AlreadyExists -> _error.value = "Таке відео вже є в цій темі"
-                AddResult.Blank -> _error.value = "Введіть назву і посилання"
+                AddResult.Blank -> _error.value = "Введіть назву і додайте посилання або файл"
             }
         }
     }

@@ -17,8 +17,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.lexumi.app.R
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.PillActionButton
@@ -49,32 +51,32 @@ fun HomeScreen(
             val session = lastSession
             if (session != null) {
                 PillActionButton(
-                    text = "Продовжити навчання",
+                    text = stringResource(R.string.continue_learning),
                     icon = Icons.Filled.MenuBook,
                     onClick = { onContinueLast(session.topicId, session.screenRoute) },
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
                 PillActionButton(
-                    text = "Вибрати інший розділ",
+                    text = stringResource(R.string.choose_other_section),
                     icon = Icons.Filled.Public,
                     onClick = onChooseOtherSection,
                 )
             } else {
                 PillActionButton(
-                    text = "Вчитись",
+                    text = stringResource(R.string.learn),
                     icon = Icons.Filled.School,
                     onClick = onLearn,
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
                 PillActionButton(
-                    text = "Додати",
-                    subtitle = "новий розділ",
+                    text = stringResource(R.string.add_new_section),
+                    subtitle = stringResource(R.string.add_new_section_subtitle),
                     icon = Icons.Filled.Add,
                     onClick = onAddSection,
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
                 PillActionButton(
-                    text = "Повторити слова",
+                    text = stringResource(R.string.repeat_words),
                     icon = Icons.Filled.Autorenew,
                     onClick = onRepeatWords,
                 )

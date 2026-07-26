@@ -18,8 +18,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.lexumi.app.R
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.LexumiTextField
@@ -48,12 +50,12 @@ fun WelcomeScreen(
             LexumiTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = "Як вас звати?",
+                label = stringResource(R.string.welcome_name_prompt),
             )
             Spacer(Modifier.height(24.dp))
             PillActionButton(
-                text = "Welcome",
-                subtitle = "Start Learning",
+                text = stringResource(R.string.welcome_button),
+                subtitle = stringResource(R.string.welcome_button_subtitle),
                 icon = Icons.Filled.Edit,
                 onClick = { viewModel.createProfile(name) },
             )

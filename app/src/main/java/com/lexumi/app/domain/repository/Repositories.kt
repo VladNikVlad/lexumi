@@ -64,7 +64,7 @@ interface VideoRepository {
     suspend fun getVideo(id: Long): VideoContent?
     suspend fun exists(topicId: Long, name: String): Boolean
     suspend fun addVideo(
-        topicId: Long, name: String, youtubeUrl: String, originalText: String?,
+        topicId: Long, name: String, youtubeUrl: String?, localVideoPath: String?, originalText: String?,
         translationText: String?, ruleIds: List<Long>, questions: List<TestQuestion>,
     ): Long
     suspend fun getQuestions(videoId: Long): List<TestQuestion>

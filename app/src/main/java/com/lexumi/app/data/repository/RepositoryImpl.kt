@@ -16,7 +16,7 @@ private fun TopicEntity.toDomain() = Topic(id, sectionId, name, position)
 private fun RuleEntity.toDomain() = Rule(id, languageId, name, text, imagePath)
 private fun WordEntity.toDomain() = Word(id, topicId, imagePath, term, translation, ruleId, level, correctStreak, score, timesSeen, inReviewList)
 private fun ImageContentEntity.toDomain() = ImageContent(id, topicId, name, imagePath, translation)
-private fun VideoEntity.toDomain() = VideoContent(id, topicId, name, youtubeUrl, originalText, translationText, ruleIds)
+private fun VideoEntity.toDomain() = VideoContent(id, topicId, name, youtubeUrl, localVideoPath, originalText, translationText, ruleIds)
 private fun AudioDialogEntity.toDomain() = AudioDialog(id, topicId, name, audioPath, translationText, ruleIds)
 private fun SentenceEntity.toDomain() = Sentence(id, topicId, name, text, translations, ruleIds)
 private fun StoryEntity.toDomain() = Story(id, topicId, name, text, translation, ruleIds)
@@ -125,12 +125,12 @@ class VideoRepositoryImpl @Inject constructor(
     override suspend fun getVideo(id: Long): VideoContent? = dao.getById(id)?.toDomain()
     override suspend fun exists(topicId: Long, name: String): Boolean = dao.countByName(topicId, name) > 0
     override suspend fun addVideo(
-        topicId: Long, name: String, youtubeUrl: String, originalText: String?,
+        topicId: Long, name: String, youtubeUrl: String?, localVideoPath: String?, originalText: String?,
         translationText: String?, ruleIds: List<Long>, questions: List<TestQuestion>,
     ): Long {
         val id = dao.insert(
-            VideoEntity(topicId = topicId, name = name, youtubeUrl = youtubeUrl, originalText = originalText,
-                translationText = translationText, ruleIds = ruleIds)
+            VideoEntity(topicId = topicId, name = name, youtubeUrl = youtubeUrl, localVideoPath = localVideoPath,
+                originalText = originalText, translationText = translationText, ruleIds = ruleIds)
         )
         if (questions.isNotEmpty()) {
             questionDao.insertAll(questions.map {

@@ -26,6 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.lexumi.app.R
 import com.lexumi.app.presentation.theme.LexumiOutline
 
 data class PickableItem(val id: Long, val name: String)
@@ -62,7 +64,7 @@ fun FolderGridPicker(
                 contentAlignment = Alignment.Center,
             ) {
                 if (items.isEmpty()) {
-                    Text("Тут поки що порожньо", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.empty_list_placeholder), style = MaterialTheme.typography.bodyMedium)
                 } else {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
