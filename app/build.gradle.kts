@@ -3,11 +3,16 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.dagger.hilt.android")
     id("com.google.devtools.ksp")
+    id("androidx.room") version "2.6.1"
 }
 
 android {
     namespace = "com.lexumi.app"
     compileSdk = 34
+
+    room {
+        schemaDirectory("$projectDir/schemas")
+    }
 
     defaultConfig {
         applicationId = "com.lexumi.app"

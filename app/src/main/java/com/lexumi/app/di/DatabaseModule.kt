@@ -3,6 +3,7 @@ package com.lexumi.app.di
 import android.content.Context
 import androidx.room.Room
 import com.lexumi.app.data.local.LexumiDatabase
+import com.lexumi.app.data.local.ALL_MIGRATIONS
 import com.lexumi.app.data.local.dao.*
 import dagger.Module
 import dagger.Provides
@@ -19,7 +20,11 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): LexumiDatabase =
         Room.databaseBuilder(context, LexumiDatabase::class.java, LexumiDatabase.DATABASE_NAME)
-            .fallbackToDestructiveMigration() // pre-release schema iteration; wipes local data on version bumps
+            .addMigrations(*ALL_MIGRATIONS)
+            // Safety net only: if a future version is ever released without a
+            // matching migration, this wipes rather than crashes. The real
+            // protection is adding a Migration in Migrations.kt every time.
+            .fallbackToDestructiveMigration()
             .build()
 
     @Provides fun provideUserProfileDao(db: LexumiDatabase): UserProfileDao = db.userProfileDao()
