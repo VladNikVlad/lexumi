@@ -19,16 +19,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.rememberAsyncImagePainter
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 
 @Composable
 fun RulesListScreen(
+    onBack: () -> Unit,
     viewModel: RulesListViewModel = hiltViewModel(),
 ) {
     val rules by viewModel.rules.collectAsState()
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

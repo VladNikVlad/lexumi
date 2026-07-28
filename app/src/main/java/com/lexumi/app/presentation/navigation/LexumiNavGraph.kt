@@ -35,6 +35,7 @@ import com.lexumi.app.presentation.welcome.WelcomeScreen
 @Composable
 fun LexumiNavGraph() {
     val navController = rememberNavController()
+    val back: () -> Unit = { navController.popBackStack() }
 
     NavHost(navController = navController, startDestination = Screen.Splash.route) {
 
@@ -71,6 +72,7 @@ fun LexumiNavGraph() {
                 onCreated = { languageId ->
                     navController.navigate(Screen.Home.build(languageId)) { popUpTo(Screen.LanguageMenu.route) { inclusive = true } }
                 },
+                onBack = back,
             )
         }
 
@@ -91,6 +93,7 @@ fun LexumiNavGraph() {
             SectionsScreen(
                 onSectionChosen = { sectionId -> navController.navigate(Screen.Topics.build(sectionId)) },
                 onAddSection = { navController.navigate(Screen.AddSection.build(languageId)) },
+                onBack = back,
             )
         }
 
@@ -100,6 +103,7 @@ fun LexumiNavGraph() {
                 onCreated = { sectionId ->
                     navController.navigate(Screen.Topics.build(sectionId)) { popUpTo(Screen.Home.build(languageId)) }
                 },
+                onBack = back,
             )
         }
 
@@ -108,12 +112,14 @@ fun LexumiNavGraph() {
             TopicsScreen(
                 onTopicChosen = { topicId -> navController.navigate(Screen.TopicAction.build(topicId)) },
                 onAddTopic = { navController.navigate(Screen.AddTopic.build(sectionId)) },
+                onBack = back,
             )
         }
 
         composable(Screen.AddTopic.route, arguments = listOf(navArgument("sectionId") { type = NavType.LongType })) {
             AddTopicScreen(
                 onCreated = { topicId -> navController.navigate(Screen.AddContentMenu.build(topicId)) },
+                onBack = back,
             )
         }
 
@@ -134,35 +140,36 @@ fun LexumiNavGraph() {
                         popUpTo(Screen.AddContentMenu.build(topicId)) { inclusive = true }
                     }
                 },
+                onBack = back,
             )
         }
 
         composable(Screen.AddRule.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            AddRuleScreen(onCreated = { navController.popBackStack() })
+            AddRuleScreen(onCreated = back, onBack = back)
         }
         composable(Screen.AddWord.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            AddWordScreen(onCreated = { navController.popBackStack() })
+            AddWordScreen(onCreated = back, onBack = back)
         }
         composable(Screen.BulkAddWords.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            BulkAddWordsScreen(onDone = { navController.popBackStack() })
+            BulkAddWordsScreen(onDone = back, onBack = back)
         }
         composable(Screen.AddImage.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            AddImageContentScreen(onCreated = { navController.popBackStack() })
+            AddImageContentScreen(onCreated = back, onBack = back)
         }
         composable(Screen.AddVideo.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            AddVideoScreen(onCreated = { navController.popBackStack() })
+            AddVideoScreen(onCreated = back, onBack = back)
         }
         composable(Screen.AddAudioDialog.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            AddAudioDialogScreen(onCreated = { navController.popBackStack() })
+            AddAudioDialogScreen(onCreated = back, onBack = back)
         }
         composable(Screen.AddSentence.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            AddSentenceScreen(onCreated = { navController.popBackStack() })
+            AddSentenceScreen(onCreated = back, onBack = back)
         }
         composable(Screen.BulkAddSentences.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            BulkAddSentencesScreen(onDone = { navController.popBackStack() })
+            BulkAddSentencesScreen(onDone = back, onBack = back)
         }
         composable(Screen.AddStory.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            AddStoryScreen(onCreated = { navController.popBackStack() })
+            AddStoryScreen(onCreated = back, onBack = back)
         }
 
         composable(Screen.TopicAction.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) { entry ->
@@ -176,52 +183,54 @@ fun LexumiNavGraph() {
                 onImageTests = { navController.navigate(Screen.ImageQuiz.build(topicId)) },
                 onSentences = { navController.navigate(Screen.SentencePractice.build(topicId)) },
                 onAddContent = { navController.navigate(Screen.AddContentMenu.build(topicId)) },
+                onBack = back,
             )
         }
 
         composable(Screen.RulesList.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            RulesListScreen()
+            RulesListScreen(onBack = back)
         }
 
         composable(Screen.LearnWords.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            LearnWordsScreen(onSessionDone = { navController.popBackStack() })
+            LearnWordsScreen(onSessionDone = back, onBack = back)
         }
 
         composable(Screen.ReviewWords.route) {
-            ReviewWordsScreen(onDone = { navController.popBackStack() })
+            ReviewWordsScreen(onDone = back, onBack = back)
         }
 
         composable(Screen.ImageQuiz.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            ImageQuizScreen(onDone = { navController.popBackStack() })
+            ImageQuizScreen(onDone = back, onBack = back)
         }
 
         composable(Screen.VideoList.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            VideoListScreen(onVideoClick = { videoId -> navController.navigate(Screen.VideoPlayer.build(videoId)) })
+            VideoListScreen(onVideoClick = { videoId -> navController.navigate(Screen.VideoPlayer.build(videoId)) }, onBack = back)
         }
         composable(Screen.VideoPlayer.route, arguments = listOf(navArgument("videoId") { type = NavType.LongType })) {
-            VideoPlayerScreen()
+            VideoPlayerScreen(onBack = back)
         }
 
         composable(Screen.AudioList.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            AudioListScreen(onDialogClick = { dialogId -> navController.navigate(Screen.AudioPlayer.build(dialogId)) })
+            AudioListScreen(onDialogClick = { dialogId -> navController.navigate(Screen.AudioPlayer.build(dialogId)) }, onBack = back)
         }
         composable(Screen.AudioPlayer.route, arguments = listOf(navArgument("dialogId") { type = NavType.LongType })) {
-            AudioPlayerScreen()
+            AudioPlayerScreen(onBack = back)
         }
 
         composable(Screen.SentencePractice.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            SentencePracticeScreen(onDone = { navController.popBackStack() })
+            SentencePracticeScreen(onDone = back, onBack = back)
         }
 
         composable(Screen.StoriesList.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
-            StoriesListScreen(onStoryClick = { storyId -> navController.navigate(Screen.StoryReader.build(storyId)) })
+            StoriesListScreen(onStoryClick = { storyId -> navController.navigate(Screen.StoryReader.build(storyId)) }, onBack = back)
         }
         composable(Screen.StoryReader.route, arguments = listOf(navArgument("storyId") { type = NavType.LongType })) {
-            StoryReaderScreen()
+            StoryReaderScreen(onBack = back)
         }
 
         composable(Screen.Settings.route) {
             SettingsScreen(
+                onBack = back,
                 onLoggedOut = { navController.navigate(Screen.Welcome.route) { popUpTo(0) } },
                 onDataCleared = { navController.navigate(Screen.Welcome.route) { popUpTo(0) } },
             )

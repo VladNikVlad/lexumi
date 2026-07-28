@@ -14,11 +14,11 @@ private fun LanguageEntity.toDomain() = Language(id, profileId, name, voiceName)
 private fun SectionEntity.toDomain() = Section(id, languageId, name, position)
 private fun TopicEntity.toDomain() = Topic(id, sectionId, name, position)
 private fun RuleEntity.toDomain() = Rule(id, languageId, name, text, imagePath)
-private fun WordEntity.toDomain() = Word(id, topicId, imagePath, term, translation, ruleId, level, correctStreak, score, timesSeen, inReviewList)
+private fun WordEntity.toDomain() = Word(id, topicId, imagePath, term, translation, ruleId, level, correctStreak, score, timesSeen, inReviewList, totalCorrect, bestStreak, currentStatsStreak)
 private fun ImageContentEntity.toDomain() = ImageContent(id, topicId, name, imagePath, translation)
 private fun VideoEntity.toDomain() = VideoContent(id, topicId, name, youtubeUrl, localVideoPath, originalText, translationText, ruleIds)
 private fun AudioDialogEntity.toDomain() = AudioDialog(id, topicId, name, audioPath, translationText, ruleIds)
-private fun SentenceEntity.toDomain() = Sentence(id, topicId, name, text, translations, ruleIds)
+private fun SentenceEntity.toDomain() = Sentence(id, topicId, name, text, translations, ruleIds, timesSeen, totalCorrect, bestStreak, currentStatsStreak)
 private fun StoryEntity.toDomain() = Story(id, topicId, name, text, translation, ruleIds)
 private fun TestQuestionEntity.toDomain() = TestQuestion(
     id, questionText,
@@ -92,6 +92,7 @@ class WordRepositoryImpl @Inject constructor(private val dao: WordDao) : WordRep
                 correctStreak = word.correctStreak, score = word.score, timesSeen = word.timesSeen,
                 lastSeenAt = System.currentTimeMillis(), inReviewList = word.inReviewList,
                 addedToReviewAt = if (word.inReviewList) System.currentTimeMillis() else null,
+                totalCorrect = word.totalCorrect, bestStreak = word.bestStreak, currentStatsStreak = word.currentStatsStreak,
             )
         )
     }
@@ -103,6 +104,7 @@ class WordRepositoryImpl @Inject constructor(private val dao: WordDao) : WordRep
                 translation = word.translation, ruleId = word.ruleId, level = word.level,
                 correctStreak = word.correctStreak, score = word.score, timesSeen = word.timesSeen,
                 inReviewList = word.inReviewList,
+                totalCorrect = word.totalCorrect, bestStreak = word.bestStreak, currentStatsStreak = word.currentStatsStreak,
             )
         )
     }
@@ -183,8 +185,15 @@ class SentenceRepositoryImpl @Inject constructor(private val dao: SentenceDao) :
     override suspend fun exists(topicId: Long, name: String): Boolean = dao.countByName(topicId, name) > 0
     override suspend fun addSentence(topicId: Long, name: String, text: String, translations: List<String>, ruleIds: List<Long>): Long =
         dao.insert(SentenceEntity(topicId = topicId, name = name, text = text, translations = translations, ruleIds = ruleIds))
-    override suspend fun updateScore(sentenceId: Long, newScore: Double, timesSeen: Int) {
-        // fetched, mutated and saved by the use case layer via getForTopic + update
+    override suspend fun updateStats(sentence: Sentence) {
+        dao.update(
+            SentenceEntity(
+                id = sentence.id, topicId = sentence.topicId, name = sentence.name, text = sentence.text,
+                translations = sentence.translations, ruleIds = sentence.ruleIds, score = 0.0,
+                timesSeen = sentence.timesSeen, totalCorrect = sentence.totalCorrect,
+                bestStreak = sentence.bestStreak, currentStatsStreak = sentence.currentStatsStreak,
+            )
+        )
     }
 }
 

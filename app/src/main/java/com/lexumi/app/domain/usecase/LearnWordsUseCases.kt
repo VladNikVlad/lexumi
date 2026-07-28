@@ -38,16 +38,27 @@ class BuildMultipleChoiceUseCase @Inject constructor(private val wordRepository:
  */
 class SubmitWordAnswerUseCase @Inject constructor(private val wordRepository: WordRepository) {
 
+    /** Applies a correct/wrong answer to the lifetime stats shown to the user (point 5). */
+    private fun Word.withStatsUpdate(wasCorrect: Boolean): Word {
+        val newStreak = if (wasCorrect) currentStatsStreak + 1 else 0
+        return copy(
+            totalCorrect = totalCorrect + if (wasCorrect) 1 else 0,
+            currentStatsStreak = newStreak,
+            bestStreak = maxOf(bestStreak, newStreak),
+        )
+    }
+
     suspend fun submitChoice(word: Word, wasCorrect: Boolean): Word {
+        val withStats = word.withStatsUpdate(wasCorrect)
         val updated = if (wasCorrect) {
-            val newStreak = word.correctStreak + 1
+            val newStreak = withStats.correctStreak + 1
             if (newStreak >= STREAK_TO_PROMOTE) {
-                word.copy(level = 1, correctStreak = 0, timesSeen = word.timesSeen + 1)
+                withStats.copy(level = 1, correctStreak = 0, timesSeen = withStats.timesSeen + 1)
             } else {
-                word.copy(correctStreak = newStreak, timesSeen = word.timesSeen + 1)
+                withStats.copy(correctStreak = newStreak, timesSeen = withStats.timesSeen + 1)
             }
         } else {
-            word.copy(correctStreak = 0, timesSeen = word.timesSeen + 1)
+            withStats.copy(correctStreak = 0, timesSeen = withStats.timesSeen + 1)
         }
         wordRepository.updateWord(updated)
         return updated
@@ -60,7 +71,9 @@ class SubmitWordAnswerUseCase @Inject constructor(private val wordRepository: Wo
             is AnswerCheck.OneLetterTypo -> 0.5
             is AnswerCheck.Wrong -> 0.0
         }
-        val updated = word.copy(score = word.score + delta, timesSeen = word.timesSeen + 1)
+        val wasFullyCorrect = result is AnswerCheck.Correct
+        val withStats = word.withStatsUpdate(wasFullyCorrect)
+        val updated = withStats.copy(score = withStats.score + delta, timesSeen = withStats.timesSeen + 1)
         wordRepository.updateWord(updated)
         return updated to result
     }

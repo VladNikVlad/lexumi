@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.rememberAsyncImagePainter
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.LexumiTextField
@@ -33,6 +34,7 @@ import java.io.File
 @Composable
 fun AddRuleScreen(
     onCreated: () -> Unit,
+    onBack: () -> Unit,
     viewModel: AddRuleViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -64,6 +66,7 @@ fun AddRuleScreen(
     }
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(32.dp),
             verticalArrangement = Arrangement.Center,

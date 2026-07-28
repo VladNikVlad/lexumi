@@ -9,9 +9,9 @@ import com.lexumi.app.domain.repository.LanguageRepository
 import com.lexumi.app.domain.repository.SectionRepository
 import com.lexumi.app.domain.repository.SentenceRepository
 import com.lexumi.app.domain.repository.TopicRepository
-import com.lexumi.app.domain.usecase.AnswerChecker
-import com.lexumi.app.util.TtsManager
+import com.lexumi.app.domain.usecase.SentenceChecker
 import com.lexumi.app.util.SoundFeedbackPlayer
+import com.lexumi.app.util.TtsManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,7 +22,7 @@ import javax.inject.Inject
 data class SentencePracticeUiState(
     val loading: Boolean = true,
     val current: Sentence? = null,
-    val feedback: AnswerCheck? = null,
+    val result: SentenceChecker.Result? = null,
     val completed: Int = 0,
     val total: Int = 0,
     val done: Boolean = false,
@@ -65,22 +65,38 @@ class SentencePracticeViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(done = true, current = null)
             return
         }
-        _uiState.value = _uiState.value.copy(current = queue.removeAt(0), feedback = null)
+        _uiState.value = _uiState.value.copy(current = queue.removeAt(0), result = null)
     }
 
     fun submit(answer: String) {
         val sentence = _uiState.value.current ?: return
-        // accept the closest of the valid translations
-        val best = sentence.translations.minByOrNull {
-            when (val check = AnswerChecker.check(answer, it)) {
-                is AnswerCheck.Correct -> 0
-                is AnswerCheck.OneLetterTypo -> 1
-                is AnswerCheck.Wrong -> 2
+        // Try every valid translation, keep whichever one is the closest match.
+        val best = sentence.translations
+            .map { SentenceChecker.check(answer, it) }
+            .minByOrNull {
+                when (it.check) {
+                    is AnswerCheck.Correct -> 0
+                    is AnswerCheck.OneLetterTypo -> 1
+                    is AnswerCheck.Wrong -> 2
+                }
             }
-        } ?: sentence.translations.firstOrNull() ?: ""
-        val check = AnswerChecker.check(answer, best)
-        if (check is AnswerCheck.Wrong) soundFeedbackPlayer.playWrong() else soundFeedbackPlayer.playCorrect()
-        _uiState.value = _uiState.value.copy(feedback = check, completed = _uiState.value.completed + 1)
+            ?: SentenceChecker.check(answer, sentence.translations.firstOrNull().orEmpty())
+
+        if (best.check is AnswerCheck.Wrong) soundFeedbackPlayer.playWrong() else soundFeedbackPlayer.playCorrect()
+
+        viewModelScope.launch {
+            val wasFullyCorrect = best.check is AnswerCheck.Correct
+            val newStreak = if (wasFullyCorrect) sentence.currentStatsStreak + 1 else 0
+            val updated = sentence.copy(
+                timesSeen = sentence.timesSeen + 1,
+                totalCorrect = sentence.totalCorrect + if (wasFullyCorrect) 1 else 0,
+                currentStatsStreak = newStreak,
+                bestStreak = maxOf(sentence.bestStreak, newStreak),
+            )
+            sentenceRepository.updateStats(updated)
+        }
+
+        _uiState.value = _uiState.value.copy(result = best, completed = _uiState.value.completed + 1)
     }
 
     fun speak(text: String) { ttsManager.speak(text, voiceName) }

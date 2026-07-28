@@ -18,26 +18,31 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.PillActionButton
 
 @Composable
 fun AudioPlayerScreen(
+    onBack: () -> Unit,
     viewModel: AudioPlayerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val dialog = state.dialog ?: return
-
-    val player = remember(dialog.audioPath) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.parse(dialog.audioPath)))
-            prepare()
-        }
-    }
-    DisposableEffect(Unit) { onDispose { player.release() } }
+    val dialog = state.dialog
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
+        if (dialog == null) return@GradientBackground
+
+        val player = remember(dialog.audioPath) {
+            ExoPlayer.Builder(context).build().apply {
+                setMediaItem(MediaItem.fromUri(Uri.parse(dialog.audioPath)))
+                prepare()
+            }
+        }
+        DisposableEffect(Unit) { onDispose { player.release() } }
+
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

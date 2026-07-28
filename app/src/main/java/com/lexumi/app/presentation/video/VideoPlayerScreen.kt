@@ -25,21 +25,25 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.PillActionButton
 
 @androidx.compose.material3.ExperimentalMaterial3Api
 @Composable
 fun VideoPlayerScreen(
+    onBack: () -> Unit,
     viewModel: VideoPlayerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val answers = remember { mutableStateMapOf<Long, Boolean>() }
 
-    val video = state.video ?: return
+    val video = state.video
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
+        if (video == null) return@GradientBackground
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

@@ -32,4 +32,9 @@ data class WordEntity(
     val lastSeenAt: Long? = null,
     val inReviewList: Boolean = false,
     val addedToReviewAt: Long? = null,
+    // --- lifetime stats shown to the user (point 5): how many times
+    // reviewed, how many exactly right, and the longest correct-in-a-row streak ever ---
+    val totalCorrect: Int = 0,
+    val bestStreak: Int = 0,
+    val currentStatsStreak: Int = 0,
 )

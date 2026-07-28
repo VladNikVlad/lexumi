@@ -27,4 +27,7 @@ data class SentenceEntity(
     val ruleIds: List<Long> = emptyList(),
     val score: Double = 0.0,
     val timesSeen: Int = 0,
+    val totalCorrect: Int = 0,
+    val bestStreak: Int = 0,
+    val currentStatsStreak: Int = 0,
 )

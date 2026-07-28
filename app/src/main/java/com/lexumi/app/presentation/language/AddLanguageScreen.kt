@@ -21,6 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lexumi.app.R
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.LexumiTextField
@@ -29,6 +30,7 @@ import com.lexumi.app.presentation.components.PillActionButton
 @Composable
 fun AddLanguageScreen(
     onCreated: (Long) -> Unit,
+    onBack: () -> Unit,
     viewModel: AddLanguageViewModel = hiltViewModel(),
 ) {
     var name by remember { mutableStateOf("") }
@@ -38,6 +40,7 @@ fun AddLanguageScreen(
     LaunchedEffect(createdId) { createdId?.let { onCreated(it) } }
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
         Column(
             modifier = Modifier.fillMaxSize().padding(32.dp),
             verticalArrangement = Arrangement.Center,

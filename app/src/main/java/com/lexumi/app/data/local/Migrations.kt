@@ -62,4 +62,19 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
-val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+/**
+ * v4 -> v5: added lifetime stats (point 5) — totalCorrect, bestStreak and an
+ * internal currentStatsStreak counter — to both words and sentences.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE words ADD COLUMN totalCorrect INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE words ADD COLUMN bestStreak INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE words ADD COLUMN currentStatsStreak INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE sentences ADD COLUMN totalCorrect INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE sentences ADD COLUMN bestStreak INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE sentences ADD COLUMN currentStatsStreak INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)

@@ -12,6 +12,7 @@ import com.lexumi.app.presentation.components.SingleFieldFormScreen
 @Composable
 fun AddSectionScreen(
     onCreated: (Long) -> Unit,
+    onBack: () -> Unit,
     viewModel: AddSectionViewModel = hiltViewModel(),
 ) {
     val error by viewModel.error.collectAsState()
@@ -25,5 +26,6 @@ fun AddSectionScreen(
         error = error,
         onClearError = { viewModel.clearError() },
         onSubmit = { viewModel.submit(it) },
+        onBack = onBack,
     )
 }

@@ -25,6 +25,9 @@ data class Word(
     val score: Double,
     val timesSeen: Int,
     val inReviewList: Boolean,
+    val totalCorrect: Int = 0,
+    val bestStreak: Int = 0,
+    val currentStatsStreak: Int = 0,
 )
 
 data class ImageContent(
@@ -72,6 +75,10 @@ data class Sentence(
     val text: String,
     val translations: List<String>,
     val ruleIds: List<Long>,
+    val timesSeen: Int = 0,
+    val totalCorrect: Int = 0,
+    val bestStreak: Int = 0,
+    val currentStatsStreak: Int = 0,
 )
 
 data class Story(

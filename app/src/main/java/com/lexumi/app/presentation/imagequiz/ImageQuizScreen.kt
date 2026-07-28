@@ -15,6 +15,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.rememberAsyncImagePainter
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.PillActionButton
 import com.lexumi.app.presentation.theme.LexumiError
@@ -23,11 +24,13 @@ import com.lexumi.app.presentation.theme.LexumiSuccess
 @Composable
 fun ImageQuizScreen(
     onDone: () -> Unit,
+    onBack: () -> Unit,
     viewModel: ImageQuizViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
         Column(
             modifier = Modifier.fillMaxSize().padding(28.dp),
             verticalArrangement = Arrangement.Center,

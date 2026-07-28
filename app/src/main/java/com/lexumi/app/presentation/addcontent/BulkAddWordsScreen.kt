@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.PillActionButton
@@ -23,6 +24,7 @@ import com.lexumi.app.presentation.theme.LexumiSuccess
 @Composable
 fun BulkAddWordsScreen(
     onDone: () -> Unit,
+    onBack: () -> Unit,
     viewModel: BulkAddWordsViewModel = hiltViewModel(),
 ) {
     val text by viewModel.text.collectAsState()
@@ -35,6 +37,7 @@ fun BulkAddWordsScreen(
     }
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

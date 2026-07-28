@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lexumi.app.R
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.PillActionButton
@@ -39,12 +40,14 @@ fun TopicActionScreen(
     onImageTests: () -> Unit,
     onSentences: () -> Unit,
     onAddContent: () -> Unit,
+    onBack: () -> Unit,
     viewModel: TopicActionViewModel = hiltViewModel(),
 ) {
     val availability by viewModel.availability.collectAsState()
     val topicName by viewModel.topicName.collectAsState()
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
         Column(
             modifier = Modifier
                 .fillMaxSize()

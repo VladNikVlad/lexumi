@@ -14,17 +14,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.PillActionButton
 
 @Composable
 fun StoryReaderScreen(
+    onBack: () -> Unit,
     viewModel: StoryReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val story = state.story ?: return
+    val story = state.story
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
+        if (story == null) return@GradientBackground
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

@@ -8,12 +8,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @Composable
 fun LearnWordsScreen(
     onSessionDone: () -> Unit,
+    onBack: () -> Unit,
     viewModel: LearnWordsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val rules by viewModel.rules.collectAsState()
     WordSessionBody(
         state = state,
+        onBack = onBack,
         onDone = onSessionDone,
         onSubmitChoice = viewModel::submitChoice,
         onSubmitTyped = viewModel::submitTyped,

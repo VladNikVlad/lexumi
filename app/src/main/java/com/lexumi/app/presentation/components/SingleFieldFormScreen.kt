@@ -25,9 +25,11 @@ fun SingleFieldFormScreen(
     error: String?,
     onClearError: () -> Unit,
     onSubmit: (String) -> Unit,
+    onBack: () -> Unit,
 ) {
     var value by remember { mutableStateOf("") }
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
         Column(
             modifier = Modifier.fillMaxSize().padding(32.dp),
             verticalArrangement = Arrangement.Center,

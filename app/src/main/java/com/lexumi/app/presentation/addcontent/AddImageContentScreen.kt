@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.rememberAsyncImagePainter
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.LexumiTextField
@@ -32,6 +33,7 @@ import java.io.File
 @Composable
 fun AddImageContentScreen(
     onCreated: () -> Unit,
+    onBack: () -> Unit,
     viewModel: AddImageContentViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -51,6 +53,7 @@ fun AddImageContentScreen(
     }
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
         Column(
             modifier = Modifier.fillMaxSize().padding(32.dp),
             verticalArrangement = Arrangement.Center,

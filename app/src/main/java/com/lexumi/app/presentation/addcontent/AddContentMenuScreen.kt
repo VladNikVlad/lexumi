@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lexumi.app.R
 import com.lexumi.app.presentation.components.GradientBackground
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.PillActionButton
 
@@ -41,8 +42,10 @@ fun AddContentMenuScreen(
     onBulkAddSentences: () -> Unit,
     onAddStory: () -> Unit,
     onDone: () -> Unit,
+    onBack: () -> Unit,
 ) {
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
         Column(
             modifier = Modifier
                 .fillMaxSize()

@@ -2,11 +2,14 @@
 
 package com.lexumi.app.presentation.settings
 
+import android.app.Activity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Info
@@ -18,24 +21,29 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lexumi.app.R
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiTextField
 import com.lexumi.app.presentation.components.PillActionButton
 import com.lexumi.app.presentation.theme.LexumiError
 import com.lexumi.app.presentation.theme.LexumiOutline
+import com.lexumi.app.presentation.theme.LexumiSuccess
 
 @Composable
 fun SettingsScreen(
+    onBack: () -> Unit,
     onLoggedOut: () -> Unit,
     onDataCleared: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
-    val wordsPerSession by viewModel.wordsPerSession.collectAsState()
-    val repetitions by viewModel.repetitions.collectAsState()
+    val context = LocalContext.current
+    val savedWordsPerSession by viewModel.wordsPerSession.collectAsState()
+    val savedRepetitions by viewModel.repetitions.collectAsState()
     val remindersEnabled by viewModel.remindersEnabled.collectAsState()
     val currentProfileId by viewModel.currentProfileId.collectAsState()
     val profiles by viewModel.profiles.collectAsState()
@@ -45,16 +53,29 @@ fun SettingsScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showNewProfileField by remember { mutableStateOf(false) }
     var newProfileName by remember { mutableStateOf("") }
-    var currentLanguageTag by remember { mutableStateOf(viewModel.currentAppLanguageTag()) }
+
+    // Pending (unsaved) values — words/session, repetitions and language only
+    // apply once "Зберегти" is pressed, so a slider drag can't silently change behavior.
+    var pendingWords by remember { mutableStateOf<Int?>(null) }
+    var pendingRepetitions by remember { mutableStateOf<Int?>(null) }
+    var pendingLanguageTag by remember { mutableStateOf(viewModel.currentAppLanguageTag()) }
+
+    val displayedWords = pendingWords ?: savedWordsPerSession
+    val displayedRepetitions = pendingRepetitions ?: savedRepetitions
+    val hasUnsavedChanges = (pendingWords != null && pendingWords != savedWordsPerSession) ||
+        (pendingRepetitions != null && pendingRepetitions != savedRepetitions) ||
+        (pendingLanguageTag != viewModel.currentAppLanguageTag())
 
     LaunchedEffect(loggedOut) { if (loggedOut) onLoggedOut() }
     LaunchedEffect(dataCleared) { if (dataCleared) onDataCleared() }
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Spacer(Modifier.height(36.dp))
             Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineMedium)
             Spacer(Modifier.height(24.dp))
 
@@ -63,34 +84,55 @@ fun SettingsScreen(
                     Icon(Icons.Filled.Language, contentDescription = null, tint = LexumiOutline)
                     Spacer(Modifier.width(12.dp))
                     FilterChip(
-                        selected = currentLanguageTag == "uk",
-                        onClick = { viewModel.setAppLanguage("uk"); currentLanguageTag = "uk" },
+                        selected = pendingLanguageTag == "uk",
+                        onClick = { pendingLanguageTag = "uk" },
                         label = { Text("Українська") },
                         modifier = Modifier.padding(end = 8.dp),
                     )
                     FilterChip(
-                        selected = currentLanguageTag == "en",
-                        onClick = { viewModel.setAppLanguage("en"); currentLanguageTag = "en" },
+                        selected = pendingLanguageTag == "en",
+                        onClick = { pendingLanguageTag = "en" },
                         label = { Text("English") },
                     )
                 }
             }
 
-            SettingsSection(title = "${stringResource(R.string.words_per_session)}: $wordsPerSession") {
+            SettingsSection(title = "${stringResource(R.string.words_per_session)}: $displayedWords") {
                 Slider(
-                    value = wordsPerSession.toFloat(),
-                    onValueChange = { viewModel.setWordsPerSession(it.toInt()) },
+                    value = displayedWords.toFloat(),
+                    onValueChange = { pendingWords = it.toInt() },
                     valueRange = 5f..30f,
                     steps = 4,
                 )
             }
 
-            SettingsSection(title = "${stringResource(R.string.repetitions)}: $repetitions") {
+            SettingsSection(title = "${stringResource(R.string.repetitions)}: $displayedRepetitions") {
                 Slider(
-                    value = repetitions.toFloat(),
-                    onValueChange = { viewModel.setRepetitions(it.toInt()) },
+                    value = displayedRepetitions.toFloat(),
+                    onValueChange = { pendingRepetitions = it.toInt() },
                     valueRange = 1f..5f,
                     steps = 3,
+                )
+            }
+
+            if (hasUnsavedChanges) {
+                PillActionButton(
+                    text = "Зберегти зміни",
+                    icon = Icons.Filled.Check,
+                    onClick = {
+                        pendingWords?.let { viewModel.setWordsPerSession(it) }
+                        pendingRepetitions?.let { viewModel.setRepetitions(it) }
+                        val languageChanged = pendingLanguageTag != viewModel.currentAppLanguageTag()
+                        if (languageChanged) {
+                            viewModel.setAppLanguage(pendingLanguageTag)
+                        }
+                        pendingWords = null
+                        pendingRepetitions = null
+                        if (languageChanged) {
+                            (context as? Activity)?.recreate()
+                        }
+                    },
+                    modifier = Modifier.padding(bottom = 16.dp),
                 )
             }
 

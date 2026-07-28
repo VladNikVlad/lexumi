@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import com.lexumi.app.domain.model.Rule
+import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiTextField
 import com.lexumi.app.presentation.components.PillActionButton
@@ -46,6 +47,7 @@ import java.io.File
 @Composable
 fun WordSessionBody(
     state: LearnWordsUiState,
+    onBack: () -> Unit,
     onDone: () -> Unit,
     onSubmitChoice: (String) -> Unit,
     onSubmitTyped: (String) -> Unit,
@@ -73,6 +75,7 @@ fun WordSessionBody(
     }
 
     GradientBackground {
+        BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
         Column(
             modifier = Modifier.fillMaxSize().padding(28.dp),
             verticalArrangement = Arrangement.Center,
@@ -199,6 +202,9 @@ fun WordSessionBody(
                 initialTranslation = state.prompt.word.translation,
                 initialImagePath = state.prompt.word.imagePath,
                 initialRuleId = state.prompt.word.ruleId,
+                timesSeen = state.prompt.word.timesSeen,
+                totalCorrect = state.prompt.word.totalCorrect,
+                bestStreak = state.prompt.word.bestStreak,
                 rules = availableRules,
                 error = state.editError,
                 onClearError = onClearEditError,
@@ -233,6 +239,9 @@ private fun EditWordDialog(
     initialTranslation: String,
     initialImagePath: String?,
     initialRuleId: Long?,
+    timesSeen: Int,
+    totalCorrect: Int,
+    bestStreak: Int,
     rules: List<Rule>,
     error: String?,
     onClearError: () -> Unit,
@@ -258,6 +267,11 @@ private fun EditWordDialog(
         title = { Text("Редагувати слово") },
         text = {
             Column {
+                Text(
+                    "Показів: $timesSeen · Правильних: $totalCorrect · Найдовша серія: $bestStreak",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(10.dp))
                 if (error != null) {
                     Text(error, color = LexumiError, style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
