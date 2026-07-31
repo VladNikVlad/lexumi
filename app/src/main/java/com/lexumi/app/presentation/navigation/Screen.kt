@@ -62,6 +62,9 @@ sealed class Screen(val route: String) {
     data object TopicAction : Screen("topic_action/{topicId}") {
         fun build(topicId: Long) = "topic_action/$topicId"
     }
+    data object TopicStats : Screen("topic_stats/{topicId}") {
+        fun build(topicId: Long) = "topic_stats/$topicId"
+    }
 
     // Rules (points 18, 19)
     data object RulesList : Screen("rules_list/{topicId}") {

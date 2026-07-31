@@ -149,7 +149,14 @@ class LearnWordsViewModel @Inject constructor(
 
     fun addCurrentToReview() {
         val prompt = _uiState.value.prompt ?: return
-        viewModelScope.launch { submitAnswer.toggleReviewList(prompt.word, true) }
+        viewModelScope.launch {
+            val updated = submitAnswer.toggleReviewList(prompt.word, true)
+            // Keep the in-memory prompt in sync, or the next answer submit
+            // would overwrite this flag back to false using a stale copy.
+            if (_uiState.value.prompt?.word?.id == updated.id) {
+                _uiState.value = _uiState.value.copy(prompt = _uiState.value.prompt!!.copy(word = updated))
+            }
+        }
     }
 
     /** Saves edits (text and/or picture) to the word currently on screen without losing its learning progress. */

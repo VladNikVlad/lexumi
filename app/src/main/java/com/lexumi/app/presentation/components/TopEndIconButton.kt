@@ -3,18 +3,22 @@ package com.lexumi.app.presentation.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.zIndex
 import com.lexumi.app.presentation.theme.LexumiIndigo
 
 @Composable
-fun SettingsIconButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun TopEndIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     IconButton(
         onClick = onClick,
         modifier = modifier
@@ -22,6 +26,6 @@ fun SettingsIconButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             .statusBarsPadding()
             .background(Color.White.copy(alpha = 0.6f), CircleShape),
     ) {
-        Icon(imageVector = Icons.Filled.Settings, contentDescription = "Налаштування", tint = LexumiIndigo)
+        Icon(imageVector = icon, contentDescription = contentDescription, tint = LexumiIndigo)
     }
 }

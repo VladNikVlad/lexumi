@@ -23,6 +23,7 @@ import com.lexumi.app.presentation.section.SectionsScreen
 import com.lexumi.app.presentation.sentences.SentencePracticeScreen
 import com.lexumi.app.presentation.settings.SettingsScreen
 import com.lexumi.app.presentation.splash.SplashScreen
+import com.lexumi.app.presentation.stats.TopicStatsScreen
 import com.lexumi.app.presentation.stories.StoriesListScreen
 import com.lexumi.app.presentation.stories.StoryReaderScreen
 import com.lexumi.app.presentation.topic.AddTopicScreen
@@ -183,8 +184,13 @@ fun LexumiNavGraph() {
                 onImageTests = { navController.navigate(Screen.ImageQuiz.build(topicId)) },
                 onSentences = { navController.navigate(Screen.SentencePractice.build(topicId)) },
                 onAddContent = { navController.navigate(Screen.AddContentMenu.build(topicId)) },
+                onStats = { navController.navigate(Screen.TopicStats.build(topicId)) },
                 onBack = back,
             )
+        }
+
+        composable(Screen.TopicStats.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {
+            TopicStatsScreen(onBack = back)
         }
 
         composable(Screen.RulesList.route, arguments = listOf(navArgument("topicId") { type = NavType.LongType })) {

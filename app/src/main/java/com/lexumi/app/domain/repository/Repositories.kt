@@ -87,6 +87,7 @@ interface SentenceRepository {
     suspend fun exists(topicId: Long, name: String): Boolean
     suspend fun addSentence(topicId: Long, name: String, text: String, translations: List<String>, ruleIds: List<Long>): Long
     suspend fun updateStats(sentence: Sentence)
+    suspend fun deleteSentence(sentence: Sentence)
 }
 
 interface StoryRepository {

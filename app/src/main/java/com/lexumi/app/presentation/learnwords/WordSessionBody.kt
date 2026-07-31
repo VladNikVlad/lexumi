@@ -21,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -170,7 +171,7 @@ fun WordSessionBody(
 
         // Top-right "⋮" menu — edit or delete the word currently on screen.
         if ((onEditWord != null || onDeleteWord != null) && state.prompt != null) {
-            Box(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
+            Box(modifier = Modifier.align(Alignment.TopEnd).zIndex(10f).statusBarsPadding().padding(16.dp)) {
                 IconButton(
                     onClick = { menuExpanded = true },
                     modifier = Modifier.background(Color.White.copy(alpha = 0.6f), CircleShape),

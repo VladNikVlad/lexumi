@@ -195,6 +195,16 @@ class SentenceRepositoryImpl @Inject constructor(private val dao: SentenceDao) :
             )
         )
     }
+    override suspend fun deleteSentence(sentence: Sentence) {
+        dao.delete(
+            SentenceEntity(
+                id = sentence.id, topicId = sentence.topicId, name = sentence.name, text = sentence.text,
+                translations = sentence.translations, ruleIds = sentence.ruleIds,
+                timesSeen = sentence.timesSeen, totalCorrect = sentence.totalCorrect,
+                bestStreak = sentence.bestStreak, currentStatsStreak = sentence.currentStatsStreak,
+            )
+        )
+    }
 }
 
 class StoryRepositoryImpl @Inject constructor(private val dao: StoryDao) : StoryRepository {

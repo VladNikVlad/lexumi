@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.MenuBook
@@ -29,6 +30,7 @@ import com.lexumi.app.presentation.components.BackIconButton
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.PillActionButton
+import com.lexumi.app.presentation.components.TopEndIconButton
 
 @Composable
 fun TopicActionScreen(
@@ -40,6 +42,7 @@ fun TopicActionScreen(
     onImageTests: () -> Unit,
     onSentences: () -> Unit,
     onAddContent: () -> Unit,
+    onStats: () -> Unit,
     onBack: () -> Unit,
     viewModel: TopicActionViewModel = hiltViewModel(),
 ) {
@@ -48,6 +51,7 @@ fun TopicActionScreen(
 
     GradientBackground {
         BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
+        TopEndIconButton(icon = Icons.Filled.BarChart, contentDescription = "Статистика", onClick = onStats, modifier = Modifier.align(Alignment.TopEnd).padding(20.dp))
         Column(
             modifier = Modifier
                 .fillMaxSize()
