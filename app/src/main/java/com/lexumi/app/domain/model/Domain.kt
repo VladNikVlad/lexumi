@@ -79,6 +79,7 @@ data class Sentence(
     val totalCorrect: Int = 0,
     val bestStreak: Int = 0,
     val currentStatsStreak: Int = 0,
+    val known: Boolean = false,
 )
 
 data class Story(

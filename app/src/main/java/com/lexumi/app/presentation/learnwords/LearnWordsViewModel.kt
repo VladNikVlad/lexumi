@@ -147,6 +147,17 @@ class LearnWordsViewModel @Inject constructor(
         }
     }
 
+    /** "Вже знаю" — marks the word mastered right away and skips it, removing any other queued repeats of it too. */
+    fun markCurrentAsKnown() {
+        val prompt = _uiState.value.prompt ?: return
+        viewModelScope.launch {
+            val updated = prompt.word.copy(score = SCORE_TO_MASTER, level = 1)
+            wordRepository.updateWord(updated)
+            queue.removeAll { it == prompt.word.id }
+            advance()
+        }
+    }
+
     fun addCurrentToReview() {
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch {

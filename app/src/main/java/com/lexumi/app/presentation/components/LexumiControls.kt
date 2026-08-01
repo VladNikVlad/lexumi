@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -18,6 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.lexumi.app.presentation.theme.LexumiOutline
 import com.lexumi.app.presentation.theme.PillShape
@@ -69,7 +73,9 @@ fun LexumiTextField(
     isError: Boolean = false,
     supportingText: String? = null,
     singleLine: Boolean = true,
+    onDone: (() -> Unit)? = null,
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -79,5 +85,13 @@ fun LexumiTextField(
         supportingText = supportingText?.let { { Text(it) } },
         shape = MaterialTheme.shapes.medium,
         modifier = modifier.fillMaxWidth(),
+        // Shows the green checkmark on the keyboard (instead of a return
+        // arrow, even for multi-line fields) and actually submits on tap —
+        // matches the word-input behavior for sentence input too.
+        keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) ImeAction.Done else ImeAction.Default),
+        keyboardActions = KeyboardActions(onDone = {
+            keyboardController?.hide()
+            onDone?.invoke()
+        }),
     )
 }

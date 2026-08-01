@@ -53,6 +53,7 @@ fun WordSessionBody(
     onSubmitChoice: (String) -> Unit,
     onSubmitTyped: (String) -> Unit,
     onAddToReview: (() -> Unit)?,
+    onAlreadyKnow: (() -> Unit)? = null,
     onNext: () -> Unit,
     doneLabel: String = "Готово",
     availableRules: List<Rule> = emptyList(),
@@ -139,9 +140,20 @@ fun WordSessionBody(
                             )
                         }
                     } else {
-                        LexumiTextField(value = typedAnswer, onValueChange = { typedAnswer = it }, label = "Ваша відповідь")
+                        LexumiTextField(
+                            value = typedAnswer, onValueChange = { typedAnswer = it }, label = "Ваша відповідь",
+                            onDone = { onSubmitTyped(typedAnswer) },
+                        )
                         Spacer(Modifier.height(16.dp))
                         PillActionButton(text = "Перевірити", icon = Icons.Filled.Check, onClick = { onSubmitTyped(typedAnswer) })
+                    }
+                    if (onAlreadyKnow != null) {
+                        Spacer(Modifier.height(8.dp))
+                        PillActionButton(
+                            text = androidx.compose.ui.res.stringResource(com.lexumi.app.R.string.already_know),
+                            icon = Icons.Filled.Check,
+                            onClick = onAlreadyKnow,
+                        )
                     }
                     if (onAddToReview != null) {
                         TextButton(onClick = onAddToReview) {

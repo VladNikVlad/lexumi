@@ -20,6 +20,7 @@ fun LearnWordsScreen(
         onSubmitChoice = viewModel::submitChoice,
         onSubmitTyped = viewModel::submitTyped,
         onAddToReview = viewModel::addCurrentToReview,
+        onAlreadyKnow = viewModel::markCurrentAsKnown,
         onNext = viewModel::next,
         availableRules = rules,
         onEditWord = { term, translation, imagePath, ruleId -> viewModel.editCurrentWord(term, translation, imagePath, ruleId) },

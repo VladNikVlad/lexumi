@@ -108,9 +108,18 @@ fun SentencePracticeScreen(
 
             val result = state.result
             if (result == null) {
-                LexumiTextField(value = answer, onValueChange = { answer = it }, label = "Переклад", singleLine = false)
+                LexumiTextField(
+                    value = answer, onValueChange = { answer = it }, label = "Переклад", singleLine = false,
+                    onDone = { viewModel.submit(answer) },
+                )
                 Spacer(Modifier.height(16.dp))
                 PillActionButton(text = "Перевірити", icon = Icons.Filled.Check, onClick = { viewModel.submit(answer) })
+                Spacer(Modifier.height(8.dp))
+                PillActionButton(
+                    text = androidx.compose.ui.res.stringResource(com.lexumi.app.R.string.already_know),
+                    icon = Icons.Filled.Check,
+                    onClick = { viewModel.markCurrentAsKnown() },
+                )
             } else {
                 val isCorrect = result.check is AnswerCheck.Correct
                 val label = if (isCorrect) "Правильно! ✓" else "Правильна відповідь:"

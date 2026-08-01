@@ -68,7 +68,7 @@ class SentencePracticeViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val all = sentenceRepository.observeSentences(topicId).first()
-            queue = all.shuffled().toMutableList()
+            queue = all.filter { !it.known }.shuffled().toMutableList()
             _uiState.value = _uiState.value.copy(total = queue.size, loading = false)
             advance()
 
@@ -118,6 +118,15 @@ class SentencePracticeViewModel @Inject constructor(
         }
 
         _uiState.value = _uiState.value.copy(result = best, completed = _uiState.value.completed + 1)
+    }
+
+    /** "Вже знаю" — marks the sentence known and excludes it from future practice sessions. */
+    fun markCurrentAsKnown() {
+        val sentence = _uiState.value.current ?: return
+        viewModelScope.launch {
+            sentenceRepository.updateStats(sentence.copy(known = true))
+            advance()
+        }
     }
 
     /** Saves edits to the sentence currently on screen without losing its practice stats. */

@@ -18,7 +18,7 @@ private fun WordEntity.toDomain() = Word(id, topicId, imagePath, term, translati
 private fun ImageContentEntity.toDomain() = ImageContent(id, topicId, name, imagePath, translation)
 private fun VideoEntity.toDomain() = VideoContent(id, topicId, name, youtubeUrl, localVideoPath, originalText, translationText, ruleIds)
 private fun AudioDialogEntity.toDomain() = AudioDialog(id, topicId, name, audioPath, translationText, ruleIds)
-private fun SentenceEntity.toDomain() = Sentence(id, topicId, name, text, translations, ruleIds, timesSeen, totalCorrect, bestStreak, currentStatsStreak)
+private fun SentenceEntity.toDomain() = Sentence(id, topicId, name, text, translations, ruleIds, timesSeen, totalCorrect, bestStreak, currentStatsStreak, known)
 private fun StoryEntity.toDomain() = Story(id, topicId, name, text, translation, ruleIds)
 private fun TestQuestionEntity.toDomain() = TestQuestion(
     id, questionText,
@@ -192,6 +192,7 @@ class SentenceRepositoryImpl @Inject constructor(private val dao: SentenceDao) :
                 translations = sentence.translations, ruleIds = sentence.ruleIds, score = 0.0,
                 timesSeen = sentence.timesSeen, totalCorrect = sentence.totalCorrect,
                 bestStreak = sentence.bestStreak, currentStatsStreak = sentence.currentStatsStreak,
+                known = sentence.known,
             )
         )
     }
@@ -202,6 +203,7 @@ class SentenceRepositoryImpl @Inject constructor(private val dao: SentenceDao) :
                 translations = sentence.translations, ruleIds = sentence.ruleIds,
                 timesSeen = sentence.timesSeen, totalCorrect = sentence.totalCorrect,
                 bestStreak = sentence.bestStreak, currentStatsStreak = sentence.currentStatsStreak,
+                known = sentence.known,
             )
         )
     }
