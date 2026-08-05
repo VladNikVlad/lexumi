@@ -64,12 +64,12 @@ class ReviewWordsViewModel @Inject constructor(
     fun submitChoice(chosenText: String) {
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch {
-            val correctText = if (prompt.askTermFirst) prompt.word.translation else prompt.word.term
-            val wasCorrect = chosenText == correctText
+            val correctRaw = if (prompt.askTermFirst) prompt.word.translation else prompt.word.term
+            val wasCorrect = chosenText == com.lexumi.app.domain.usecase.TranslationParser.displayPrimary(correctRaw)
             submitAnswer.submitChoice(prompt.word, wasCorrect)
             if (wasCorrect) soundFeedbackPlayer.playCorrect() else soundFeedbackPlayer.playWrong()
             _uiState.value = _uiState.value.copy(
-                feedback = if (wasCorrect) WordFeedback.Correct else WordFeedback.Wrong(correctText),
+                feedback = if (wasCorrect) WordFeedback.Correct else WordFeedback.Wrong(correctRaw.trim()),
                 completedCount = _uiState.value.completedCount + 1,
             )
         }

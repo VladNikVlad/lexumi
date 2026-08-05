@@ -4,6 +4,9 @@ import com.lexumi.app.domain.model.AnswerCheck
 
 /**
  * Compares what the user typed against the expected spelling.
+ * [expected] may itself list several acceptable variants separated by "/"
+ * (each possibly carrying a "(...)" explanation that must not be required as
+ * part of the answer) — any of them counts as correct.
  * A one-letter mistake (wrong letter, one missing, or one extra) earns half
  * credit and highlights just that letter; anything further off is a full miss
  * and the correct spelling is shown (point 20 & 21 of the scenario).
@@ -12,14 +15,15 @@ object AnswerChecker {
 
     fun check(userInput: String, expected: String): AnswerCheck {
         val a = userInput.trim()
-        val b = expected.trim()
-        if (a.equals(b, ignoreCase = true)) return AnswerCheck.Correct
+        val variants = TranslationParser.acceptableAnswers(expected)
+        if (variants.any { it.equals(a, ignoreCase = true) }) return AnswerCheck.Correct
 
-        val distance = levenshtein(a.lowercase(), b.lowercase())
+        val closest = variants.minByOrNull { levenshtein(a.lowercase(), it.lowercase()) } ?: expected.trim()
+        val distance = levenshtein(a.lowercase(), closest.lowercase())
         return if (distance == 1) {
-            AnswerCheck.OneLetterTypo(correctSpelling = expected)
+            AnswerCheck.OneLetterTypo(correctSpelling = expected.trim())
         } else {
-            AnswerCheck.Wrong(correctSpelling = expected)
+            AnswerCheck.Wrong(correctSpelling = expected.trim())
         }
     }
 

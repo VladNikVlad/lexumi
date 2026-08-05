@@ -22,6 +22,8 @@ fun LearnWordsScreen(
         onAddToReview = viewModel::addCurrentToReview,
         onAlreadyKnow = viewModel::markCurrentAsKnown,
         onNext = viewModel::next,
+        onSelectMatchingLeft = viewModel::selectMatchingLeft,
+        onSelectMatchingRight = viewModel::selectMatchingRight,
         availableRules = rules,
         onEditWord = { term, translation, imagePath, ruleId -> viewModel.editCurrentWord(term, translation, imagePath, ruleId) },
         onDeleteWord = { viewModel.deleteCurrentWord() },

@@ -5,79 +5,64 @@ import com.lexumi.app.domain.model.AnswerCheck
 /**
  * Compares a typed sentence to the expected one word-by-word rather than as
  * one solid string, so a missing final period, an extra space, or different
- * spacing between words never counts as a mistake. Exactly one word may be
- * off by a single letter (same tolerance as the word-learning engine); any
- * more than that, or a genuinely wrong word, counts as an error. The result
- * carries enough detail (which word index differs, and against which
- * original word) for the UI to highlight just that part in red.
+ * spacing between words never counts as a mistake. Reports every word that
+ * differs (not just the first), so the caller can decide between "fully
+ * correct", "a couple of words wrong — offer a fill-in-the-blanks hint", or
+ * "too many mistakes — just reveal the answer".
  */
 object SentenceChecker {
 
+    enum class Category { CORRECT, PARTIAL, WRONG }
+
     data class Result(
+        val category: Category,
         val check: AnswerCheck,
         /** The expected sentence split into its original words (for display). */
         val correctWords: List<String>,
-        /** Index of the one word that differed, if any. */
-        val badWordIndex: Int?,
-        /** What the user actually typed at that word position, if any. */
-        val userWordAtBadIndex: String?,
+        /** Indices (into [correctWords]) of every word that didn't match — meaningful only when word counts line up. */
+        val mismatchedIndices: List<Int>,
+        /** What the user actually typed at each mismatched index, aligned with [mismatchedIndices]. */
+        val userWordsAtMismatches: List<String>,
     )
+
+    /** At most this many wrong words still gets the fill-in-the-blanks hint treatment; more than this is a flat reveal. */
+    private const val MAX_PARTIAL_MISTAKES = 2
 
     fun check(userInput: String, expected: String): Result {
         val userWords = tokenize(userInput)
         val correctWords = tokenize(expected)
 
         if (userWords.size != correctWords.size) {
-            return Result(AnswerCheck.Wrong(expected), correctWords, null, null)
+            return Result(Category.WRONG, AnswerCheck.Wrong(expected), correctWords, emptyList(), emptyList())
         }
 
-        var minorIndex = -1
-        var wrongIndex = -1
-
+        val mismatches = mutableListOf<Int>()
         for (i in correctWords.indices) {
             val isLast = i == correctWords.lastIndex
             val typed = if (isLast) stripTrailingPunctuation(userWords[i]) else userWords[i]
             val correct = if (isLast) stripTrailingPunctuation(correctWords[i]) else correctWords[i]
-
-            if (typed.equals(correct, ignoreCase = true)) continue
-
-            val distance = levenshtein(typed.lowercase(), correct.lowercase())
-            if (distance == 1 && minorIndex == -1 && wrongIndex == -1) {
-                minorIndex = i
-            } else {
-                wrongIndex = i
-                break
-            }
+            if (!typed.equals(correct, ignoreCase = true)) mismatches.add(i)
         }
 
-        val check = when {
-            wrongIndex != -1 -> AnswerCheck.Wrong(expected)
-            minorIndex != -1 -> AnswerCheck.OneLetterTypo(expected)
-            else -> AnswerCheck.Correct
+        val category = when {
+            mismatches.isEmpty() -> Category.CORRECT
+            mismatches.size <= MAX_PARTIAL_MISTAKES -> Category.PARTIAL
+            else -> Category.WRONG
         }
-        val badIndex = if (wrongIndex != -1) wrongIndex else minorIndex.takeIf { it != -1 }
-        return Result(check, correctWords, badIndex, badIndex?.let { userWords.getOrNull(it) })
+        val check = when (category) {
+            Category.CORRECT -> AnswerCheck.Correct
+            Category.PARTIAL -> AnswerCheck.OneLetterTypo(expected)
+            Category.WRONG -> AnswerCheck.Wrong(expected)
+        }
+        return Result(category, check, correctWords, mismatches, mismatches.map { userWords[it] })
     }
+
+    /** Checks a single fill-in-the-blank word, tolerating one letter mistake same as the main word-learning engine. */
+    fun checkSingleWord(userInput: String, expected: String): AnswerCheck = AnswerChecker.check(userInput, expected)
 
     private fun tokenize(s: String): List<String> =
         s.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
 
     private fun stripTrailingPunctuation(word: String): String =
         word.trimEnd('.', '!', '?', ',', ';', ':')
-
-    private fun levenshtein(a: String, b: String): Int {
-        val dp = Array(a.length + 1) { IntArray(b.length + 1) }
-        for (i in 0..a.length) dp[i][0] = i
-        for (j in 0..b.length) dp[0][j] = j
-        for (i in 1..a.length) {
-            for (j in 1..b.length) {
-                dp[i][j] = if (a[i - 1] == b[j - 1]) {
-                    dp[i - 1][j - 1]
-                } else {
-                    1 + minOf(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
-                }
-            }
-        }
-        return dp[a.length][b.length]
-    }
 }

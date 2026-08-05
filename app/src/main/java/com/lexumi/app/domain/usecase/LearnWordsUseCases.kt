@@ -9,19 +9,29 @@ import kotlin.random.Random
 const val STREAK_TO_PROMOTE = 5   // level 0 -> level 1
 const val SCORE_TO_MASTER = 10.0  // level 1 "mastered" threshold (hidden stat)
 
-/** True when the word should be asked in <term -> translation> direction, false for reverse. */
+/**
+ * True when the word should be asked in <term -> translation> direction, false for reverse.
+ * Reverse only ever kicks in for level-1 (mastered-enough-to-be-typed) words that have also
+ * reached the "known" score threshold — multiple-choice (level 0) words are always asked
+ * term-first, so their answer options are always in the native (translation) language.
+ */
 fun Word.askTermFirst(): Boolean =
-    if (score >= SCORE_TO_MASTER) Random.nextBoolean() else true
+    if (level >= 1 && score >= SCORE_TO_MASTER) Random.nextBoolean() else true
 
 /**
  * Builds the multiple-choice options for a level-0 word: the correct
- * translation plus three random distractors from the same topic.
+ * translation plus three random distractors from the same topic. Options are
+ * cleaned with [TranslationParser] so a field with several "/" variants or a
+ * "(...)" explanation still shows as one short, unambiguous button.
  */
 class BuildMultipleChoiceUseCase @Inject constructor(private val wordRepository: WordRepository) {
     suspend operator fun invoke(word: Word, askTermFirst: Boolean): List<String> {
         val pool = wordRepository.getWords(word.topicId).filter { it.id != word.id }
-        val correct = if (askTermFirst) word.translation else word.term
-        val distractorsSource = pool.map { if (askTermFirst) it.translation else it.term }.distinct()
+        val correct = TranslationParser.displayPrimary(if (askTermFirst) word.translation else word.term)
+        val distractorsSource = pool
+            .map { TranslationParser.displayPrimary(if (askTermFirst) it.translation else it.term) }
+            .filter { it != correct }
+            .distinct()
         val distractors = distractorsSource.shuffled().take(3)
         val options = (distractors + correct).toMutableList()
         // pad with placeholders if the topic doesn't yet have 3 other words

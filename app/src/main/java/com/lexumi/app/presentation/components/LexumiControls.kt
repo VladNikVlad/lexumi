@@ -16,9 +16,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
@@ -88,6 +91,45 @@ fun LexumiTextField(
         // Shows the green checkmark on the keyboard (instead of a return
         // arrow, even for multi-line fields) and actually submits on tap —
         // matches the word-input behavior for sentence input too.
+        keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) ImeAction.Done else ImeAction.Default),
+        keyboardActions = KeyboardActions(onDone = {
+            keyboardController?.hide()
+            onDone?.invoke()
+        }),
+    )
+}
+
+/**
+ * A plain underline field — no box, no outline, just a bottom rule the user
+ * types above. Used for sentence practice, where a boxed field looked heavy
+ * for a short in-line answer.
+ */
+@Composable
+fun LexumiUnderlineTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    isError: Boolean = false,
+    singleLine: Boolean = true,
+    textStyle: androidx.compose.ui.text.TextStyle = androidx.compose.ui.text.TextStyle.Default,
+    onDone: (() -> Unit)? = null,
+) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = label?.let { { Text(it) } },
+        isError = isError,
+        singleLine = singleLine,
+        textStyle = textStyle,
+        modifier = modifier,
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            disabledContainerColor = Color.Transparent,
+            errorContainerColor = Color.Transparent,
+        ),
         keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) ImeAction.Done else ImeAction.Default),
         keyboardActions = KeyboardActions(onDone = {
             keyboardController?.hide()
