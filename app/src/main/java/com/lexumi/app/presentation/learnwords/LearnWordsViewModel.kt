@@ -12,9 +12,14 @@ import com.lexumi.app.domain.repository.RuleRepository
 import com.lexumi.app.domain.repository.SectionRepository
 import com.lexumi.app.domain.repository.TopicRepository
 import com.lexumi.app.domain.repository.WordRepository
-import com.lexumi.app.domain.usecase.*
-import com.lexumi.app.util.TtsManager
+import com.lexumi.app.domain.usecase.BuildMultipleChoiceUseCase
+import com.lexumi.app.domain.usecase.GetCardsRoundWordsUseCase
+import com.lexumi.app.domain.usecase.GetSessionWordsUseCase
+import com.lexumi.app.domain.usecase.SubmitWordAnswerUseCase
+import com.lexumi.app.domain.usecase.TranslationParser
 import com.lexumi.app.util.SoundFeedbackPlayer
+import com.lexumi.app.util.TtsManager
+import com.lexumi.app.util.VoiceRecognizerManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,15 +31,24 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Which of the 3 inline (main-pass) practice formats a word rating maps to. */
+enum class WordPromptMode { CHOICE, TYPED, HEAR_ONLY }
+
 data class WordPrompt(
     val word: Word,
-    val askTermFirst: Boolean,
-    val choices: List<String>?, // null when the word is at level 1 (typed answer)
+    val mode: WordPromptMode,
+    /** What's shown on the card — null for HEAR_ONLY, where nothing is shown, only heard. */
+    val displayText: String?,
+    /** What the auto-read-aloud / replay button says. */
+    val speakText: String,
+    /** What a typed (or spoken) answer is checked against. Unused for CHOICE. */
+    val expectedAnswer: String,
+    val choices: List<String>? = null,
 )
 
 sealed class WordFeedback {
-    data object None : WordFeedback()
-    data object Correct : WordFeedback()
+    object None : WordFeedback()
+    object Correct : WordFeedback()
     data class OneLetterTypo(val correctSpelling: String) : WordFeedback()
     data class Wrong(val correctSpelling: String) : WordFeedback()
 }
@@ -52,6 +66,21 @@ data class MatchingGameState(
     val wrongFlashRightId: Long? = null,
 )
 
+data class VoiceCard(val wordId: Long, val term: String, val translation: String)
+
+data class VoiceMasteryState(
+    val cards: List<VoiceCard>,
+    val index: Int = 0,
+    val listening: Boolean = false,
+    /** What the recognizer actually heard, shown for feedback once a card is answered. */
+    val heard: String? = null,
+    /** null while listening/unanswered; true/false once a card has been checked. */
+    val correct: Boolean? = null,
+    /** Live status/partial-hypothesis/error text from the recognizer — for debugging why
+     * recognition isn't picking anything up. Shown under the card at all times while testing. */
+    val debug: String? = null,
+)
+
 data class LearnWordsUiState(
     val loading: Boolean = true,
     val prompt: WordPrompt? = null,
@@ -62,17 +91,24 @@ data class LearnWordsUiState(
     val editError: String? = null,
     /** True once the main pass is done and we're re-testing only the words that were ever wrong this session. */
     val inMistakeReview: Boolean = false,
-    /** The "find the pair" bonus round shown once at the very end of the session. */
+    /** "Кажи вголос" cards round for rating-2 words — happens once, before the pair-matching round. */
+    val voiceMastery: VoiceMasteryState? = null,
+    /** "Знайти пару" round for the rating 0/1 words practiced this session — happens last. */
     val matchingGame: MatchingGameState? = null,
+    /** True once the user has tapped "Я зараз не можу говорити" — no more voice-required tasks this session. */
+    val voiceDisabled: Boolean = false,
+    /** Live status/partial/error text from the recognizer for the rating-3 mic option — for debugging. */
+    val voiceDebug: String? = null,
 )
 
 @HiltViewModel
 class LearnWordsViewModel @Inject constructor(
     private val getSessionWords: GetSessionWordsUseCase,
+    private val getCardsRoundWords: GetCardsRoundWordsUseCase,
     private val buildMultipleChoice: BuildMultipleChoiceUseCase,
     private val submitAnswer: SubmitWordAnswerUseCase,
-    private val editWord: EditWordUseCase,
-    private val deleteWord: DeleteWordUseCase,
+    private val editWord: com.lexumi.app.domain.usecase.EditWordUseCase,
+    private val deleteWord: com.lexumi.app.domain.usecase.DeleteWordUseCase,
     private val wordRepository: WordRepository,
     private val topicRepository: TopicRepository,
     private val sectionRepository: SectionRepository,
@@ -80,6 +116,7 @@ class LearnWordsViewModel @Inject constructor(
     ruleRepository: RuleRepository,
     private val prefs: UserPreferences,
     private val ttsManager: TtsManager,
+    private val voiceRecognizer: VoiceRecognizerManager,
     private val soundFeedbackPlayer: SoundFeedbackPlayer,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -101,12 +138,15 @@ class LearnWordsViewModel @Inject constructor(
     private var queue: MutableList<Long> = mutableListOf()
     private var distinctWordIds: List<Long> = emptyList()
 
-    // --- session-only mistake tracking (point: retry a word until correct after 2 misses,
-    // then a final "work on mistakes" pass once the whole session is otherwise done) ---
-    private val wrongCounts = mutableMapOf<Long, Int>()
+    // --- session-only mistake tracking: retry a word within its own scheduled
+    // repeats, then a single "work on mistakes" pass once the main pass is done ---
     private val everWrongIds = mutableSetOf<Long>()
     private var mistakeReviewStarted = false
+    private var cardsRoundStarted = false
     private var matchingGameStarted = false
+
+    // "Я зараз не можу говорити" — once pressed, no more voice-required tasks this session.
+    private var voiceDisabledThisSession = false
 
     init {
         viewModelScope.launch {
@@ -128,42 +168,138 @@ class LearnWordsViewModel @Inject constructor(
     private suspend fun advance() {
         if (queue.isEmpty()) {
             if (!mistakeReviewStarted && everWrongIds.isNotEmpty()) {
-                // Main pass is over, but some words were wrong at some point —
-                // do one more "work on mistakes" round over just those.
                 mistakeReviewStarted = true
                 queue = everWrongIds.toMutableList().apply { shuffle() }
                 _uiState.value = _uiState.value.copy(inMistakeReview = true)
+            } else if (!cardsRoundStarted) {
+                cardsRoundStarted = true
+                enterCardsRound()
+                return
             } else if (!matchingGameStarted) {
                 matchingGameStarted = true
                 enterMatchingGame()
                 return
             } else {
-                prefs.clearLastSession()
-                _uiState.value = _uiState.value.copy(sessionDone = true, prompt = null)
+                finishSession()
                 return
             }
         }
         // Re-fetch the word fresh each time: an earlier repeat in this same
-        // session may have changed its level/score, and the prompt should
-        // reflect that current state, not a stale snapshot from the start.
+        // session may have changed its rating, and the prompt should reflect
+        // that current state, not a stale snapshot from the start.
         val wordId = queue.removeAt(0)
         val word = wordRepository.getWord(wordId) ?: run { advance(); return }
-        val askTermFirst = word.askTermFirst()
-        val choices = if (word.level == 0) buildMultipleChoice(word, askTermFirst) else null
+        val prompt = buildPrompt(word) ?: run { advance(); return } // rating 2/4 shouldn't be in the main queue at all
+        _uiState.value = _uiState.value.copy(prompt = prompt, feedback = WordFeedback.None)
+    }
+
+    private suspend fun buildPrompt(word: Word): WordPrompt? = when (word.rating) {
+        0 -> WordPrompt(
+            word = word, mode = WordPromptMode.CHOICE,
+            displayText = word.term, speakText = word.term, expectedAnswer = word.translation,
+            choices = buildMultipleChoice(word),
+        )
+        1 -> if (!word.typedReverseActive) {
+            WordPrompt(word, WordPromptMode.TYPED, word.term, word.term, word.translation)
+        } else {
+            WordPrompt(word, WordPromptMode.TYPED, word.translation, word.translation, word.term)
+        }
+        3 -> WordPrompt(word, WordPromptMode.HEAR_ONLY, null, word.term, word.translation)
+        else -> null
+    }
+
+    private suspend fun finishSession() {
+        prefs.clearLastSession()
+        _uiState.value = _uiState.value.copy(sessionDone = true, prompt = null, voiceMastery = null, matchingGame = null)
+    }
+
+    // ---------------- cards round (rating 2, voice) ----------------
+
+    /** All of the topic's rating-2 words — not just the ones seen this session, since progress
+     * toward rating 3 is tracked on the word itself and carries over between sessions. */
+    private suspend fun enterCardsRound() {
+        val words = if (voiceDisabledThisSession) emptyList() else getCardsRoundWords(topicId)
+        if (words.isEmpty()) { advance(); return }
         _uiState.value = _uiState.value.copy(
-            prompt = WordPrompt(word, askTermFirst, choices),
-            feedback = WordFeedback.None,
+            prompt = null,
+            inMistakeReview = false,
+            voiceMastery = VoiceMasteryState(cards = words.map { VoiceCard(it.id, it.term, it.translation) }),
         )
     }
 
-    /** "Знайти пару" bonus round at the very end: the session's distinct words, term vs. translation. */
-    private suspend fun enterMatchingGame() {
-        val words = distinctWordIds.mapNotNull { wordRepository.getWord(it) }
-        if (words.isEmpty()) {
-            prefs.clearLastSession()
-            _uiState.value = _uiState.value.copy(sessionDone = true, prompt = null, inMistakeReview = false)
-            return
+    /** Starts listening for the current voice card; stops itself after ~2s of silence. */
+    fun startListeningForCurrentVoiceCard() {
+        val state = _uiState.value.voiceMastery ?: return
+        val card = state.cards.getOrNull(state.index) ?: return
+        _uiState.value = _uiState.value.copy(voiceMastery = state.copy(listening = true, heard = null, correct = null, debug = null))
+        val locale = ttsManager.localeFor(_voiceName.value)
+        voiceRecognizer.listenOnce(
+            locale = locale,
+            onPartial = { partial ->
+                val current = _uiState.value.voiceMastery ?: return@listenOnce
+                _uiState.value = _uiState.value.copy(voiceMastery = current.copy(debug = "Чую: «$partial»"))
+            },
+            onDebug = { line ->
+                val current = _uiState.value.voiceMastery ?: return@listenOnce
+                _uiState.value = _uiState.value.copy(voiceMastery = current.copy(debug = line))
+            },
+            onResult = { heardRaw ->
+                // Checks the full phrase first, then trailing windows of increasing size, so a
+                // multi-word answer (e.g. "la pizarra") still matches even if the recognizer
+                // tacked on extra mis-heard words.
+                val expected = TranslationParser.acceptableAnswers(card.term)
+                val isCorrect = voiceRecognizer.matches(heardRaw, expected)
+                if (isCorrect) soundFeedbackPlayer.playCorrect() else soundFeedbackPlayer.playWrong()
+                viewModelScope.launch {
+                    val word = wordRepository.getWord(card.wordId)
+                    if (word != null) submitAnswer.submitVoiceCardAnswer(word, isCorrect)
+                    val current = _uiState.value.voiceMastery ?: return@launch
+                    _uiState.value = _uiState.value.copy(voiceMastery = current.copy(listening = false, heard = heardRaw, correct = isCorrect))
+                }
+            },
+        )
+    }
+
+    fun nextVoiceCard() {
+        val state = _uiState.value.voiceMastery ?: return
+        val nextIndex = state.index + 1
+        if (nextIndex >= state.cards.size) {
+            viewModelScope.launch { advance() }
+        } else {
+            _uiState.value = _uiState.value.copy(voiceMastery = state.copy(index = nextIndex, listening = false, heard = null, correct = null))
         }
+    }
+
+    /** "Вже знаю" during the cards round: this rating-2 word jumps straight to mastered (4). */
+    fun markCurrentVoiceCardAsKnown() {
+        val state = _uiState.value.voiceMastery ?: return
+        val card = state.cards.getOrNull(state.index) ?: return
+        viewModelScope.launch {
+            val word = wordRepository.getWord(card.wordId)
+            if (word != null) submitAnswer.markAsKnown(word)
+            nextVoiceCard()
+        }
+    }
+
+    /** "Я зараз не можу говорити" — ends the cards round for this session (progress untouched,
+     * these words simply come back next session) and moves straight to matching pairs. */
+    fun voiceUnavailable() {
+        voiceDisabledThisSession = true
+        voiceRecognizer.stop()
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(voiceMastery = null, voiceDisabled = true)
+            advance()
+        }
+    }
+
+    // ---------------- "Знайти пару" round (rating 0/1, this session's words) ----------------
+
+    private suspend fun enterMatchingGame() {
+        // No rating filter here — this reviews whatever words were actually practiced in this
+        // session's main pass, regardless of what rating they ended on (a word promoted to the
+        // cards round mid-session shouldn't vanish from its own session's matching game).
+        val words = distinctWordIds.mapNotNull { wordRepository.getWord(it) }
+        if (words.isEmpty()) { finishSession(); return }
         val pairs = words.map { MatchingPair(it.id, it.term, it.translation) }
         _uiState.value = _uiState.value.copy(
             prompt = null,
@@ -179,7 +315,6 @@ class LearnWordsViewModel @Inject constructor(
     fun selectMatchingLeft(wordId: Long) {
         val game = _uiState.value.matchingGame ?: return
         if (wordId in game.matchedIds) return
-        // Tapping the already-selected tile again cancels the selection instead of re-selecting it.
         if (game.selectedLeftId == wordId) {
             _uiState.value = _uiState.value.copy(matchingGame = game.copy(selectedLeftId = null, wrongFlashLeftId = null, wrongFlashRightId = null))
             return
@@ -192,7 +327,6 @@ class LearnWordsViewModel @Inject constructor(
     fun selectMatchingRight(wordId: Long) {
         val game = _uiState.value.matchingGame ?: return
         if (wordId in game.matchedIds) return
-        // Tapping the already-selected tile again cancels the selection instead of re-selecting it.
         if (game.selectedRightId == wordId) {
             _uiState.value = _uiState.value.copy(matchingGame = game.copy(selectedRightId = null, wrongFlashLeftId = null, wrongFlashRightId = null))
             return
@@ -208,14 +342,9 @@ class LearnWordsViewModel @Inject constructor(
         if (left == null || right == null) return
         if (left == right) {
             val matched = game.matchedIds + left
-            _uiState.value = _uiState.value.copy(
-                matchingGame = game.copy(matchedIds = matched, selectedLeftId = null, selectedRightId = null),
-            )
+            _uiState.value = _uiState.value.copy(matchingGame = game.copy(matchedIds = matched, selectedLeftId = null, selectedRightId = null))
             if (matched.size == game.pairs.size) {
-                viewModelScope.launch {
-                    prefs.clearLastSession()
-                    _uiState.value = _uiState.value.copy(sessionDone = true, matchingGame = null)
-                }
+                viewModelScope.launch { finishSession() }
             }
         } else {
             _uiState.value = _uiState.value.copy(
@@ -224,34 +353,20 @@ class LearnWordsViewModel @Inject constructor(
         }
     }
 
-    /** Called after any wrong/typo answer: tracks it for the end-of-session review, and forces
-     * an immediate re-queue once the same word has been wrong twice, so it keeps coming back
-     * until answered correctly instead of only relying on its originally scheduled repeats. */
-    private fun registerMistake(wordId: Long) {
-        everWrongIds.add(wordId)
-        val count = (wrongCounts[wordId] ?: 0) + 1
-        wrongCounts[wordId] = count
-        if (count >= 2) {
-            queue.add(wordId)
-        }
-    }
+    // ---------------- main-pass answers ----------------
 
-    private fun registerSuccess(wordId: Long) {
-        // A correct answer clears the "must retry immediately" pressure, though it
-        // stays in everWrongIds so it's still covered by the end-of-session review.
-        wrongCounts[wordId] = 0
-    }
+    private fun registerMistake(wordId: Long) { everWrongIds.add(wordId) }
+    private fun registerSuccess(wordId: Long) { /* still covered by the single end-of-session review */ }
 
     fun submitChoice(chosenText: String) {
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch {
-            val correctRaw = if (prompt.askTermFirst) prompt.word.translation else prompt.word.term
-            val wasCorrect = chosenText == com.lexumi.app.domain.usecase.TranslationParser.displayPrimary(correctRaw)
+            val wasCorrect = chosenText == TranslationParser.displayPrimary(prompt.expectedAnswer)
             submitAnswer.submitChoice(prompt.word, wasCorrect)
             if (wasCorrect) { soundFeedbackPlayer.playCorrect(); registerSuccess(prompt.word.id) }
             else { soundFeedbackPlayer.playWrong(); registerMistake(prompt.word.id) }
             _uiState.value = _uiState.value.copy(
-                feedback = if (wasCorrect) WordFeedback.Correct else WordFeedback.Wrong(correctRaw.trim()),
+                feedback = if (wasCorrect) WordFeedback.Correct else WordFeedback.Wrong(prompt.expectedAnswer.trim()),
                 completedCount = _uiState.value.completedCount + 1,
             )
         }
@@ -260,8 +375,7 @@ class LearnWordsViewModel @Inject constructor(
     fun submitTyped(userInput: String) {
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch {
-            val expected = if (prompt.askTermFirst) prompt.word.translation else prompt.word.term
-            val (_, check) = submitAnswer.submitTypedAnswer(prompt.word, userInput, expected)
+            val (_, check) = submitAnswer.submitTypedAnswer(prompt.word, userInput, prompt.expectedAnswer)
             if (check is AnswerCheck.Wrong) { soundFeedbackPlayer.playWrong(); registerMistake(prompt.word.id) }
             else { soundFeedbackPlayer.playCorrect(); registerSuccess(prompt.word.id) }
             val feedback = when (check) {
@@ -273,12 +387,33 @@ class LearnWordsViewModel @Inject constructor(
         }
     }
 
-    /** "Вже знаю" — marks the word mastered right away and skips it, removing any other queued repeats of it too. */
+    /** The hear-only (rating 3) mic option: spoken answer checked the same way as a typed one. */
+    fun startListeningForHearOnlyAnswer() {
+        val prompt = _uiState.value.prompt ?: return
+        if (prompt.mode != WordPromptMode.HEAR_ONLY || voiceDisabledThisSession) return
+        _uiState.value = _uiState.value.copy(voiceDebug = null)
+        val nativeLocale = java.util.Locale.getDefault()
+        voiceRecognizer.listenOnce(
+            locale = nativeLocale,
+            onPartial = { partial -> _uiState.value = _uiState.value.copy(voiceDebug = "Чую: «$partial»") },
+            onDebug = { line -> _uiState.value = _uiState.value.copy(voiceDebug = line) },
+            onResult = { heardRaw -> submitTyped(heardRaw) },
+        )
+    }
+
+    /** "Я зараз не можу говорити" from within a hear-only prompt — just hides the mic option;
+     * the word still has its typed fallback, so the main pass isn't interrupted. */
+    fun disableVoiceForSession() {
+        voiceDisabledThisSession = true
+        voiceRecognizer.stop()
+        _uiState.value = _uiState.value.copy(voiceDisabled = true)
+    }
+
+    /** "Вже знаю": ratings 0-1 jump to the cards round (2); ratings 2-3 jump to mastered (4). */
     fun markCurrentAsKnown() {
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch {
-            val updated = prompt.word.copy(score = SCORE_TO_MASTER, level = 1)
-            wordRepository.updateWord(updated)
+            submitAnswer.markAsKnown(prompt.word)
             queue.removeAll { it == prompt.word.id }
             everWrongIds.remove(prompt.word.id)
             advance()
@@ -287,32 +422,23 @@ class LearnWordsViewModel @Inject constructor(
 
     fun addCurrentToReview() {
         val prompt = _uiState.value.prompt ?: return
-        viewModelScope.launch {
-            val updated = submitAnswer.toggleReviewList(prompt.word, true)
-            // Keep the in-memory prompt in sync, or the next answer submit
-            // would overwrite this flag back to false using a stale copy.
-            if (_uiState.value.prompt?.word?.id == updated.id) {
-                _uiState.value = _uiState.value.copy(prompt = _uiState.value.prompt!!.copy(word = updated))
-            }
-        }
+        viewModelScope.launch { submitAnswer.toggleReviewList(prompt.word, true) }
     }
 
-    /** Saves edits (text and/or picture) to the word currently on screen without losing its learning progress. */
     fun editCurrentWord(term: String, translation: String, imagePath: String?, ruleId: Long?) {
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch {
             when (val result = editWord(prompt.word, term, translation, imagePath, ruleId)) {
-                is AddResult.Success -> {
+                is com.lexumi.app.domain.usecase.AddResult.Success -> {
                     val updated = prompt.word.copy(term = term.trim(), translation = translation.trim(), imagePath = imagePath, ruleId = ruleId)
-                    _uiState.value = _uiState.value.copy(prompt = prompt.copy(word = updated), editError = null)
+                    _uiState.value = _uiState.value.copy(prompt = buildPrompt(updated) ?: prompt, editError = null)
                 }
-                AddResult.AlreadyExists -> _uiState.value = _uiState.value.copy(editError = "Таке слово вже є в цій темі")
-                AddResult.Blank -> _uiState.value = _uiState.value.copy(editError = "Заповніть слово і переклад")
+                com.lexumi.app.domain.usecase.AddResult.AlreadyExists -> _uiState.value = _uiState.value.copy(editError = "Таке слово вже є в цій темі")
+                com.lexumi.app.domain.usecase.AddResult.Blank -> _uiState.value = _uiState.value.copy(editError = "Заповніть слово і переклад")
             }
         }
     }
 
-    /** Deletes the word currently on screen (and any other queued repeats of it) and moves on. */
     fun deleteCurrentWord() {
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch {
@@ -327,7 +453,16 @@ class LearnWordsViewModel @Inject constructor(
 
     fun speak(text: String) { ttsManager.speak(text, _voiceName.value) }
 
+    /** Speaks native-language (Ukrainian) text with a Ukrainian voice, regardless of the topic's
+     * own language — used for the translation side of the "Знайти пару" matching game. */
+    fun speakNative(text: String) { ttsManager.speak(text, java.util.Locale("uk")) }
+
     fun next() {
         viewModelScope.launch { advance() }
+    }
+
+    override fun onCleared() {
+        voiceRecognizer.stop()
+        super.onCleared()
     }
 }

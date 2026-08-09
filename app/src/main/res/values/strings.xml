@@ -68,7 +68,7 @@
     <!-- Settings -->
     <string name="settings">Налаштування</string>
     <string name="app_language">Мова застосунку</string>
-    <string name="words_per_session">Слів за сесію</string>
+    <string name="words_per_session">Слів/речень за сесію</string>
     <string name="repetitions">Кількість повторень</string>
     <string name="reminders">Нагадування про навчання</string>
     <string name="profile_section">Профіль</string>

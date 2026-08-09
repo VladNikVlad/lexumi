@@ -25,7 +25,15 @@ data class SentenceEntity(
     // first entry is the primary translation, the rest are additional valid ones
     val translations: List<String> = emptyList(),
     val ruleIds: List<Long> = emptyList(),
-    val score: Double = 0.0,
+    // --- mastery ladder (rating 0-4), mirrors words ---
+    // 0 = target->native typed, 1 = native->target typed, 2 = audio-only (hear target, type native),
+    // 3 = say-it-aloud (native shown, speak target), 4 = mastered, excluded from practice.
+    val rating: Int = 0,
+    val directStreak: Int = 0,   // rating 0: consecutive correct answers, target text -> typed native
+    val reverseStreak: Int = 0,  // rating 1: consecutive correct answers, native text -> typed target
+    val audioStreak: Int = 0,    // rating 2: consecutive correct answers, heard target -> typed native
+    val voiceStreak: Int = 0,    // rating 3: consecutive correct answers, native text -> spoken target
+    val score: Double = 0.0,     // legacy, kept for old rows; superseded by `rating`
     val timesSeen: Int = 0,
     val totalCorrect: Int = 0,
     val bestStreak: Int = 0,

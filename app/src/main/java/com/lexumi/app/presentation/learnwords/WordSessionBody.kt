@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image as ImageIcon
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
@@ -36,16 +38,16 @@ import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiTextField
 import com.lexumi.app.presentation.components.PillActionButton
 import com.lexumi.app.presentation.theme.LexumiError
+import com.lexumi.app.presentation.theme.LexumiOutline
 import com.lexumi.app.presentation.theme.LexumiSuccess
 import com.lexumi.app.util.ImageCompressor
 import java.io.File
 
 /**
  * Shared visual body for a word-learning session, used by both the topic
- * "Вчити слова" flow and the "Повторити слова" review flow (point 20 & 26).
- * The three-dot menu (top-right) lets the user edit or delete the word
- * currently on screen — image included — when [onEditWord]/[onDeleteWord]
- * are provided.
+ * "Вчити слова" flow and the "Повторити слова" review flow. The three-dot
+ * menu (top-right) lets the user edit or delete the word currently on
+ * screen — image included — when [onEditWord]/[onDeleteWord] are provided.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,14 +60,21 @@ fun WordSessionBody(
     onAddToReview: (() -> Unit)?,
     onAlreadyKnow: (() -> Unit)? = null,
     onNext: () -> Unit,
+    onStartVoiceCard: (() -> Unit)? = null,
+    onNextVoiceCard: (() -> Unit)? = null,
+    onMarkVoiceCardKnown: (() -> Unit)? = null,
+    onVoiceUnavailable: (() -> Unit)? = null,
     onSelectMatchingLeft: ((Long) -> Unit)? = null,
     onSelectMatchingRight: ((Long) -> Unit)? = null,
+    onStartHearOnlyVoice: (() -> Unit)? = null,
+    onDisableVoiceForSession: (() -> Unit)? = null,
     doneLabel: String = "Готово",
     availableRules: List<Rule> = emptyList(),
     onEditWord: ((term: String, translation: String, imagePath: String?, ruleId: Long?) -> Unit)? = null,
     onDeleteWord: (() -> Unit)? = null,
     onClearEditError: () -> Unit = {},
     onSpeak: ((String) -> Unit)? = null,
+    onSpeakNative: ((String) -> Unit)? = null,
 ) {
     var typedAnswer by remember { mutableStateOf("") }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -75,12 +84,10 @@ fun WordSessionBody(
     LaunchedEffect(state.prompt) { typedAnswer = ""; showAnswerHint = false }
     LaunchedEffect(state.editError) { if (state.editError != null) showEditDialog = true }
 
-    // Read the word aloud automatically the moment it appears (cleaned to a single
-    // variant — the raw field may contain "/" alternatives and a "(...)" hint).
-    LaunchedEffect(state.prompt?.word?.id, state.prompt?.askTermFirst) {
+    // Read the word/prompt aloud automatically the moment it appears.
+    LaunchedEffect(state.prompt?.word?.id, state.prompt?.mode) {
         val prompt = state.prompt ?: return@LaunchedEffect
-        val raw = if (prompt.askTermFirst) prompt.word.term else prompt.word.translation
-        onSpeak?.invoke(TranslationParser.displayPrimary(raw))
+        onSpeak?.invoke(TranslationParser.displayPrimary(prompt.speakText))
     }
 
     GradientBackground {
@@ -94,12 +101,23 @@ fun WordSessionBody(
                 CircularProgressIndicator()
                 return@Column
             }
+            if (state.voiceMastery != null) {
+                VoiceMasteryBody(
+                    state = state.voiceMastery,
+                    onStartListening = onStartVoiceCard ?: {},
+                    onNext = onNextVoiceCard ?: {},
+                    onMarkKnown = onMarkVoiceCardKnown,
+                    onVoiceUnavailable = onVoiceUnavailable,
+                )
+                return@Column
+            }
             if (state.matchingGame != null) {
                 MatchingGameBody(
                     game = state.matchingGame,
                     onSelectLeft = onSelectMatchingLeft ?: {},
                     onSelectRight = onSelectMatchingRight ?: {},
-                    onSpeak = onSpeak,
+                    onSpeakTerm = onSpeak,
+                    onSpeakTranslation = onSpeakNative ?: onSpeak,
                 )
                 return@Column
             }
@@ -112,11 +130,7 @@ fun WordSessionBody(
 
             val prompt = state.prompt
             if (state.inMistakeReview) {
-                Text(
-                    "Робота над помилками",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = com.lexumi.app.presentation.theme.LexumiError,
-                )
+                Text("Робота над помилками", style = MaterialTheme.typography.labelLarge, color = LexumiError)
                 Spacer(Modifier.height(8.dp))
             }
             LinearProgressIndicator(
@@ -127,36 +141,28 @@ fun WordSessionBody(
             )
             Spacer(Modifier.height(28.dp))
 
-            if (!prompt.askTermFirst && prompt.word.imagePath != null) {
-                Image(
-                    painter = rememberAsyncImagePainter(prompt.word.imagePath),
-                    contentDescription = null,
-                    modifier = Modifier.size(120.dp).clip(RoundedCornerShape(16.dp)),
-                )
-                Spacer(Modifier.height(16.dp))
-            }
-
-            val promptRaw = if (prompt.askTermFirst) prompt.word.term else prompt.word.translation
-            val promptClean = TranslationParser.displayPrimary(promptRaw)
-            // Typed mode only: if the user is stuck, tapping the word reveals the
-            // answer above it so they can type it in and keep moving instead of
-            // getting stuck on a word they don't remember yet.
-            val hintAllowed = state.feedback == WordFeedback.None && prompt.choices == null
-            val answerRaw = if (prompt.askTermFirst) prompt.word.translation else prompt.word.term
+            val hintAllowed = state.feedback == WordFeedback.None && prompt.choices == null && prompt.mode != WordPromptMode.HEAR_ONLY
             if (hintAllowed && showAnswerHint) {
-                Text(
-                    answerRaw.trim(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = com.lexumi.app.presentation.theme.LexumiOutline,
-                )
+                Text(prompt.expectedAnswer.trim(), style = MaterialTheme.typography.bodyMedium, color = LexumiOutline)
                 Spacer(Modifier.height(8.dp))
             }
-            WordDisplayCard(
-                text = promptClean,
-                subtext = if (TranslationParser.hasExtra(promptRaw)) promptRaw.trim() else null,
-                onSpeak = onSpeak?.let { speak -> { speak(promptClean) } },
-                onTap = if (hintAllowed) ({ showAnswerHint = !showAnswerHint }) else null,
-            )
+
+            if (prompt.mode == WordPromptMode.HEAR_ONLY) {
+                // Nothing is shown — only heard. A big replay button stands in for the word card.
+                HearOnlyCard(onReplay = onSpeak?.let { speak -> { speak(TranslationParser.displayPrimary(prompt.speakText)) } })
+                if (state.voiceDebug != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(state.voiceDebug, style = MaterialTheme.typography.bodySmall, color = LexumiOutline)
+                }
+            } else {
+                val promptClean = TranslationParser.displayPrimary(prompt.displayText.orEmpty())
+                WordDisplayCard(
+                    text = promptClean,
+                    subtext = if (TranslationParser.hasExtra(prompt.displayText.orEmpty())) prompt.displayText?.trim() else null,
+                    onSpeak = onSpeak?.let { speak -> { speak(promptClean) } },
+                    onTap = if (hintAllowed) ({ showAnswerHint = !showAnswerHint }) else null,
+                )
+            }
             Spacer(Modifier.height(28.dp))
 
             when (val feedback = state.feedback) {
@@ -175,7 +181,25 @@ fun WordSessionBody(
                             onDone = { onSubmitTyped(typedAnswer) },
                         )
                         Spacer(Modifier.height(16.dp))
-                        PillActionButton(text = "Перевірити", icon = Icons.Filled.Check, onClick = { onSubmitTyped(typedAnswer) })
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            PillActionButton(
+                                text = "Перевірити", icon = Icons.Filled.Check,
+                                onClick = { onSubmitTyped(typedAnswer) },
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (prompt.mode == WordPromptMode.HEAR_ONLY && !state.voiceDisabled && onStartHearOnlyVoice != null) {
+                                IconButton(
+                                    onClick = onStartHearOnlyVoice,
+                                    modifier = Modifier.size(48.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.7f)),
+                                ) { Icon(Icons.Filled.Mic, contentDescription = "Сказати вголос") }
+                            }
+                        }
+                        if (prompt.mode == WordPromptMode.HEAR_ONLY && !state.voiceDisabled && onDisableVoiceForSession != null) {
+                            Spacer(Modifier.height(8.dp))
+                            TextButton(onClick = onDisableVoiceForSession) {
+                                Text("Я зараз не можу говорити", color = LexumiOutline, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
                     }
 
                     Spacer(Modifier.height(4.dp))
@@ -186,18 +210,14 @@ fun WordSessionBody(
                         TextButton(onClick = onAlreadyKnow) {
                             Text(
                                 androidx.compose.ui.res.stringResource(com.lexumi.app.R.string.already_know) + " →",
-                                color = com.lexumi.app.presentation.theme.LexumiOutline,
+                                color = LexumiOutline,
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                         }
                         Spacer(Modifier.height(8.dp))
                     }
                     if (onAddToReview != null) {
-                        PillActionButton(
-                            text = "Додати до повторення",
-                            icon = Icons.Filled.BookmarkAdd,
-                            onClick = onAddToReview,
-                        )
+                        PillActionButton(text = "Додати до повторення", icon = Icons.Filled.BookmarkAdd, onClick = onAddToReview)
                     }
                 }
                 is WordFeedback.Correct -> {
@@ -282,20 +302,121 @@ fun WordSessionBody(
     }
 }
 
+/** Rating-3 "hear only" prompt: nothing shown, just a big replay button. */
+@Composable
+private fun HearOnlyCard(onReplay: (() -> Unit)?) {
+    Box(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Color.White.copy(alpha = 0.55f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(modifier = Modifier.padding(vertical = 44.dp, horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Слухай уважно…", style = MaterialTheme.typography.titleMedium, color = LexumiOutline)
+            Spacer(Modifier.height(16.dp))
+            IconButton(
+                onClick = { onReplay?.invoke() },
+                modifier = Modifier.size(64.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.7f)),
+            ) {
+                Icon(Icons.Filled.VolumeUp, contentDescription = "Прослухати ще раз", modifier = Modifier.size(32.dp), tint = LexumiOutline)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.VoiceMasteryBody(
+    state: VoiceMasteryState,
+    onStartListening: () -> Unit,
+    onNext: () -> Unit,
+    onMarkKnown: (() -> Unit)?,
+    onVoiceUnavailable: (() -> Unit)?,
+) {
+    val card = state.cards.getOrNull(state.index) ?: return
+    Text("Скажи це слово вголос", style = MaterialTheme.typography.headlineSmall)
+    Spacer(Modifier.height(8.dp))
+    Text("${state.index + 1} з ${state.cards.size}", style = MaterialTheme.typography.bodyMedium, color = LexumiOutline)
+    Spacer(Modifier.height(28.dp))
+
+    // A fresh card starts listening automatically — no extra tap needed between cards.
+    LaunchedEffect(card.wordId) {
+        if (state.correct == null && !state.listening) onStartListening()
+    }
+
+    WordDisplayCard(text = TranslationParser.displayPrimary(card.translation), onSpeak = null)
+    Spacer(Modifier.height(12.dp))
+    // Always visible while testing — shows exactly what the recognizer is hearing (or why it isn't).
+    Text(
+        state.debug ?: "…",
+        style = MaterialTheme.typography.bodySmall,
+        color = LexumiOutline,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
+    Spacer(Modifier.height(16.dp))
+
+    when {
+        state.listening -> {
+            CircularProgressIndicator()
+            Spacer(Modifier.height(12.dp))
+            Text("Слухаю…", style = MaterialTheme.typography.bodyMedium, color = LexumiOutline)
+        }
+        state.correct == true -> {
+            Icon(Icons.Filled.Check, contentDescription = null, tint = LexumiSuccess, modifier = Modifier.size(48.dp))
+            Spacer(Modifier.height(8.dp))
+            Text("Правильно!", style = MaterialTheme.typography.titleMedium, color = LexumiSuccess)
+            Spacer(Modifier.height(20.dp))
+            PillActionButton(text = "Далі", icon = Icons.Filled.Check, onClick = onNext)
+        }
+        state.correct == false -> {
+            Text(
+                if (state.heard.isNullOrBlank()) "Нічого не почув(-ла)" else "Почув(-ла): «${state.heard}»",
+                style = MaterialTheme.typography.bodyMedium,
+                color = LexumiError,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text("Правильно: ${TranslationParser.displayPrimary(card.term)}", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = onStartListening) { Text("Спробувати ще") }
+                PillActionButton(text = "Далі", icon = Icons.Filled.Check, onClick = onNext)
+            }
+        }
+        else -> {
+            PillActionButton(text = "Говорити", icon = Icons.Filled.VolumeUp, onClick = onStartListening)
+        }
+    }
+
+    if (onMarkKnown != null || onVoiceUnavailable != null) {
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider(color = Color(0xFFE7E3F5))
+        Spacer(Modifier.height(12.dp))
+        if (onMarkKnown != null) {
+            TextButton(onClick = onMarkKnown) {
+                Text(
+                    androidx.compose.ui.res.stringResource(com.lexumi.app.R.string.already_know) + " →",
+                    color = LexumiOutline, style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        }
+        if (onVoiceUnavailable != null) {
+            TextButton(onClick = onVoiceUnavailable) {
+                Icon(Icons.Filled.MicOff, contentDescription = null, modifier = Modifier.size(18.dp), tint = LexumiOutline)
+                Spacer(Modifier.width(6.dp))
+                Text("Я зараз не можу говорити", color = LexumiOutline, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
 @Composable
 private fun ColumnScope.MatchingGameBody(
     game: MatchingGameState,
     onSelectLeft: (Long) -> Unit,
     onSelectRight: (Long) -> Unit,
-    onSpeak: ((String) -> Unit)?,
+    onSpeakTerm: ((String) -> Unit)?,
+    onSpeakTranslation: ((String) -> Unit)?,
 ) {
     Text("Знайти пару", style = MaterialTheme.typography.headlineSmall)
     Spacer(Modifier.height(8.dp))
-    Text(
-        "${game.matchedIds.size} з ${game.pairs.size}",
-        style = MaterialTheme.typography.bodyMedium,
-        color = com.lexumi.app.presentation.theme.LexumiOutline,
-    )
+    Text("${game.matchedIds.size} з ${game.pairs.size}", style = MaterialTheme.typography.bodyMedium, color = LexumiOutline)
     Spacer(Modifier.height(20.dp))
 
     val pairsById = remember(game.pairs) { game.pairs.associateBy { it.wordId } }
@@ -309,23 +430,23 @@ private fun ColumnScope.MatchingGameBody(
     Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(activeLeft, key = { it }) { id ->
+                // Left column is the word being learned — always read in that language.
                 MatchingTile(
                     text = TranslationParser.displayPrimary(pairsById.getValue(id).term),
-                    matched = false,
                     selected = id == game.selectedLeftId,
                     wrongFlash = id == game.wrongFlashLeftId,
-                    onClick = { onSpeak?.invoke(TranslationParser.displayPrimary(pairsById.getValue(id).term)); onSelectLeft(id) },
+                    onClick = { onSpeakTerm?.invoke(TranslationParser.displayPrimary(pairsById.getValue(id).term)); onSelectLeft(id) },
                 )
             }
         }
         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(activeRight, key = { it }) { id ->
+                // Right column is the native-language translation — read in the native voice, not the topic's.
                 MatchingTile(
                     text = TranslationParser.displayPrimary(pairsById.getValue(id).translation),
-                    matched = false,
                     selected = id == game.selectedRightId,
                     wrongFlash = id == game.wrongFlashRightId,
-                    onClick = { onSpeak?.invoke(TranslationParser.displayPrimary(pairsById.getValue(id).term)); onSelectRight(id) },
+                    onClick = { onSpeakTranslation?.invoke(TranslationParser.displayPrimary(pairsById.getValue(id).translation)); onSelectRight(id) },
                 )
             }
         }
@@ -333,11 +454,10 @@ private fun ColumnScope.MatchingGameBody(
 }
 
 @Composable
-private fun MatchingTile(text: String, matched: Boolean, selected: Boolean, wrongFlash: Boolean, onClick: () -> Unit) {
+private fun MatchingTile(text: String, selected: Boolean, wrongFlash: Boolean, onClick: () -> Unit) {
     val background = when {
-        matched -> com.lexumi.app.presentation.theme.LexumiSuccess.copy(alpha = 0.35f)
         wrongFlash -> LexumiError.copy(alpha = 0.35f)
-        selected -> com.lexumi.app.presentation.theme.LexumiOutline.copy(alpha = 0.35f)
+        selected -> LexumiOutline.copy(alpha = 0.35f)
         else -> Color.White.copy(alpha = 0.75f)
     }
     Box(
@@ -345,7 +465,7 @@ private fun MatchingTile(text: String, matched: Boolean, selected: Boolean, wron
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(background)
-            .then(if (matched) Modifier else Modifier.clickable(onClick = onClick))
+            .clickable(onClick = onClick)
             .padding(vertical = 14.dp, horizontal = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -382,7 +502,7 @@ private fun WordDisplayCard(text: String, subtext: String? = null, onSpeak: (() 
                 Text(
                     text = subtext,
                     style = MaterialTheme.typography.bodySmall,
-                    color = com.lexumi.app.presentation.theme.LexumiOutline,
+                    color = LexumiOutline,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
@@ -395,7 +515,7 @@ private fun WordDisplayCard(text: String, subtext: String? = null, onSpeak: (() 
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.7f)),
                 ) {
-                    Icon(Icons.Filled.VolumeUp, contentDescription = "Прослухати ще раз", tint = com.lexumi.app.presentation.theme.LexumiOutline)
+                    Icon(Icons.Filled.VolumeUp, contentDescription = "Прослухати ще раз", tint = LexumiOutline)
                 }
             }
         }

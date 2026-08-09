@@ -14,11 +14,11 @@ private fun LanguageEntity.toDomain() = Language(id, profileId, name, voiceName)
 private fun SectionEntity.toDomain() = Section(id, languageId, name, position)
 private fun TopicEntity.toDomain() = Topic(id, sectionId, name, position)
 private fun RuleEntity.toDomain() = Rule(id, languageId, name, text, imagePath)
-private fun WordEntity.toDomain() = Word(id, topicId, imagePath, term, translation, ruleId, level, correctStreak, score, timesSeen, inReviewList, totalCorrect, bestStreak, currentStatsStreak)
+private fun WordEntity.toDomain() = Word(id, topicId, imagePath, term, translation, ruleId, rating, correctStreak, typedStreak, typedReverseActive, voiceStreak, finalStreak, timesSeen, inReviewList, totalCorrect, bestStreak, currentStatsStreak)
 private fun ImageContentEntity.toDomain() = ImageContent(id, topicId, name, imagePath, translation)
 private fun VideoEntity.toDomain() = VideoContent(id, topicId, name, youtubeUrl, localVideoPath, originalText, translationText, ruleIds)
 private fun AudioDialogEntity.toDomain() = AudioDialog(id, topicId, name, audioPath, translationText, ruleIds)
-private fun SentenceEntity.toDomain() = Sentence(id, topicId, name, text, translations, ruleIds, timesSeen, totalCorrect, bestStreak, currentStatsStreak, known)
+private fun SentenceEntity.toDomain() = Sentence(id, topicId, name, text, translations, ruleIds, rating, directStreak, reverseStreak, audioStreak, voiceStreak, timesSeen, totalCorrect, bestStreak, currentStatsStreak, known)
 private fun StoryEntity.toDomain() = Story(id, topicId, name, text, translation, ruleIds)
 private fun TestQuestionEntity.toDomain() = TestQuestion(
     id, questionText,
@@ -88,8 +88,10 @@ class WordRepositoryImpl @Inject constructor(private val dao: WordDao) : WordRep
         dao.update(
             WordEntity(
                 id = word.id, topicId = word.topicId, imagePath = word.imagePath, term = word.term,
-                translation = word.translation, ruleId = word.ruleId, level = word.level,
-                correctStreak = word.correctStreak, score = word.score, timesSeen = word.timesSeen,
+                translation = word.translation, ruleId = word.ruleId, rating = word.rating,
+                correctStreak = word.correctStreak, typedStreak = word.typedStreak,
+                typedReverseActive = word.typedReverseActive, voiceStreak = word.voiceStreak,
+                finalStreak = word.finalStreak, timesSeen = word.timesSeen,
                 lastSeenAt = System.currentTimeMillis(), inReviewList = word.inReviewList,
                 addedToReviewAt = if (word.inReviewList) System.currentTimeMillis() else null,
                 totalCorrect = word.totalCorrect, bestStreak = word.bestStreak, currentStatsStreak = word.currentStatsStreak,
@@ -101,8 +103,10 @@ class WordRepositoryImpl @Inject constructor(private val dao: WordDao) : WordRep
         dao.delete(
             WordEntity(
                 id = word.id, topicId = word.topicId, imagePath = word.imagePath, term = word.term,
-                translation = word.translation, ruleId = word.ruleId, level = word.level,
-                correctStreak = word.correctStreak, score = word.score, timesSeen = word.timesSeen,
+                translation = word.translation, ruleId = word.ruleId, rating = word.rating,
+                correctStreak = word.correctStreak, typedStreak = word.typedStreak,
+                typedReverseActive = word.typedReverseActive, voiceStreak = word.voiceStreak,
+                finalStreak = word.finalStreak, timesSeen = word.timesSeen,
                 inReviewList = word.inReviewList,
                 totalCorrect = word.totalCorrect, bestStreak = word.bestStreak, currentStatsStreak = word.currentStatsStreak,
             )
@@ -189,7 +193,9 @@ class SentenceRepositoryImpl @Inject constructor(private val dao: SentenceDao) :
         dao.update(
             SentenceEntity(
                 id = sentence.id, topicId = sentence.topicId, name = sentence.name, text = sentence.text,
-                translations = sentence.translations, ruleIds = sentence.ruleIds, score = 0.0,
+                translations = sentence.translations, ruleIds = sentence.ruleIds, rating = sentence.rating,
+                directStreak = sentence.directStreak, reverseStreak = sentence.reverseStreak,
+                audioStreak = sentence.audioStreak, voiceStreak = sentence.voiceStreak,
                 timesSeen = sentence.timesSeen, totalCorrect = sentence.totalCorrect,
                 bestStreak = sentence.bestStreak, currentStatsStreak = sentence.currentStatsStreak,
                 known = sentence.known,

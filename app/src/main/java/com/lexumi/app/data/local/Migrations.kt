@@ -84,4 +84,24 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
-val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+/**
+ * v6 -> v7: the mastery ladder rework — words and sentences now progress through 5 ratings
+ * (0-4) instead of the old level/score pair. Existing words keep their old `level`/`score`
+ * columns (now unused) and start over at rating 0 with fresh streaks; nothing is deleted.
+ */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE words ADD COLUMN rating INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE words ADD COLUMN typedStreak INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE words ADD COLUMN typedReverseActive INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE words ADD COLUMN voiceStreak INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE words ADD COLUMN finalStreak INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE sentences ADD COLUMN rating INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE sentences ADD COLUMN directStreak INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE sentences ADD COLUMN reverseStreak INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE sentences ADD COLUMN audioStreak INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE sentences ADD COLUMN voiceStreak INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)

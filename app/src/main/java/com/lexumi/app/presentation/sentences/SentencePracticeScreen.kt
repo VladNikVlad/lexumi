@@ -34,6 +34,7 @@ import com.lexumi.app.presentation.components.LexumiTextField
 import com.lexumi.app.presentation.components.LexumiUnderlineTextField
 import com.lexumi.app.presentation.components.PillActionButton
 import com.lexumi.app.presentation.components.RuleMultiSelect
+import com.lexumi.app.presentation.components.rememberMicGatedAction
 import com.lexumi.app.presentation.theme.LexumiError
 import com.lexumi.app.presentation.theme.LexumiOutline
 import com.lexumi.app.presentation.theme.LexumiSuccess
@@ -50,10 +51,16 @@ fun SentencePracticeScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    val startListening = rememberMicGatedAction(viewModel::startListeningForSentence)
 
     LaunchedEffect(state.prompt?.sentence?.id, state.prompt?.askOriginalFirst) { answer = "" }
-    LaunchedEffect(state.prompt?.displayText) { state.prompt?.let { viewModel.speak(it.displayText) } }
+    LaunchedEffect(state.prompt?.speakText) { state.prompt?.let { viewModel.speak(it.speakText) } }
     LaunchedEffect(state.editError) { if (state.editError != null) showEditDialog = true }
+    // Voice-only (rating 3) sentences start listening the moment the card appears.
+    LaunchedEffect(state.prompt?.sentence?.id, state.prompt?.voiceOnly) {
+        val prompt = state.prompt
+        if (prompt != null && prompt.voiceOnly && state.result == null && !state.listening) startListening()
+    }
 
     GradientBackground {
         BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
@@ -106,13 +113,24 @@ fun SentencePracticeScreen(
                 modifier = Modifier.fillMaxWidth(0.7f).height(6.dp).clip(RoundedCornerShape(3.dp)),
             )
             Spacer(Modifier.height(24.dp))
-            Text(prompt.displayText, style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(8.dp))
-            IconButton(
-                onClick = { viewModel.speak(prompt.displayText) },
-                modifier = Modifier.size(44.dp).background(Color.White.copy(alpha = 0.6f), CircleShape),
-            ) {
-                Icon(Icons.Filled.VolumeUp, contentDescription = "Прослухати ще раз", tint = LexumiOutline)
+            if (prompt.audioOnly) {
+                Text("Слухай уважно…", style = MaterialTheme.typography.titleMedium, color = LexumiOutline)
+                Spacer(Modifier.height(12.dp))
+                IconButton(
+                    onClick = { viewModel.speak(prompt.speakText) },
+                    modifier = Modifier.size(56.dp).background(Color.White.copy(alpha = 0.6f), CircleShape),
+                ) {
+                    Icon(Icons.Filled.VolumeUp, contentDescription = "Прослухати ще раз", modifier = Modifier.size(28.dp), tint = LexumiOutline)
+                }
+            } else {
+                Text(prompt.displayText.orEmpty(), style = MaterialTheme.typography.headlineMedium)
+                Spacer(Modifier.height(8.dp))
+                IconButton(
+                    onClick = { viewModel.speak(prompt.speakText) },
+                    modifier = Modifier.size(44.dp).background(Color.White.copy(alpha = 0.6f), CircleShape),
+                ) {
+                    Icon(Icons.Filled.VolumeUp, contentDescription = "Прослухати ще раз", tint = LexumiOutline)
+                }
             }
             Spacer(Modifier.height(20.dp))
 
@@ -126,6 +144,31 @@ fun SentencePracticeScreen(
                     onToggleReveal = viewModel::toggleHintReveal,
                     onSubmit = viewModel::submitHints,
                 )
+                result == null && prompt.voiceOnly -> {
+                    // Rating 3 — no more typing, just speak the answer out loud.
+                    if (state.listening) {
+                        CircularProgressIndicator()
+                        Spacer(Modifier.height(12.dp))
+                        Text("Слухаю…", style = MaterialTheme.typography.bodyMedium, color = LexumiOutline)
+                    } else {
+                        PillActionButton(text = "Говорити", icon = Icons.Filled.VolumeUp, onClick = startListening)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // Always visible while testing — shows exactly what the recognizer is hearing (or why it isn't).
+                    Text(state.voiceDebug ?: "…", style = MaterialTheme.typography.bodySmall, color = LexumiOutline)
+                    Spacer(Modifier.height(8.dp))
+                    PillActionButton(
+                        text = androidx.compose.ui.res.stringResource(com.lexumi.app.R.string.already_know),
+                        icon = Icons.Filled.Check,
+                        onClick = { viewModel.markCurrentAsKnown() },
+                    )
+                    if (!state.voiceDisabled) {
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(onClick = { viewModel.disableVoiceForSession() }) {
+                            Text("Я зараз не можу говорити", color = LexumiOutline, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
                 result == null -> {
                     LexumiUnderlineTextField(
                         value = answer, onValueChange = { answer = it }, label = "Переклад", singleLine = false,
@@ -144,6 +187,10 @@ fun SentencePracticeScreen(
                 else -> {
                     val isCorrect = result.category == SentenceChecker.Category.CORRECT
                     val label = if (isCorrect) "Правильно! ✓" else "Правильна відповідь:"
+                    if (prompt.voiceOnly && !state.heard.isNullOrBlank()) {
+                        Text("Почув(-ла): «${state.heard}»", style = MaterialTheme.typography.bodyMedium, color = LexumiOutline)
+                        Spacer(Modifier.height(8.dp))
+                    }
                     Text(label, color = if (isCorrect) LexumiSuccess else LexumiError, style = MaterialTheme.typography.titleMedium)
 
                     if (!isCorrect) {

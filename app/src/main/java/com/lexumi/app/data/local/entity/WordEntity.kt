@@ -24,10 +24,17 @@ data class WordEntity(
     val term: String,
     val translation: String,
     val ruleId: Long? = null,
-    // --- spaced-repetition state (hidden from the user, point 20 of the scenario) ---
-    val level: Int = 0,               // 0 = multiple choice, 1 = free text input
-    val correctStreak: Int = 0,       // consecutive correct answers at level 0, needs 5 to reach level 1
-    val score: Double = 0.0,          // accumulates at level 1, 1.0 correct / 0.5 one-letter typo, reaches 10 to "master"
+    // --- mastery ladder (rating 0-4), point 22 of the scenario ---
+    // 0 = new (multiple choice), 1 = typed both directions, 2 = say-it-aloud cards,
+    // 3 = hear-only (typed or spoken answer), 4 = mastered, excluded from practice.
+    val rating: Int = 0,
+    val level: Int = 0,               // legacy, kept for old rows; superseded by `rating`
+    val correctStreak: Int = 0,       // rating 0: consecutive correct multiple-choice answers, 5 to advance
+    val typedStreak: Int = 0,         // rating 1: consecutive correct typed answers in the current direction
+    val typedReverseActive: Boolean = false, // rating 1: false = target->native phase, true = native->target phase
+    val voiceStreak: Int = 0,         // rating 2: consecutive correct spoken answers in the cards round
+    val finalStreak: Int = 0,         // rating 3: consecutive correct hear-only answers
+    val score: Double = 0.0,          // legacy, kept for old rows; superseded by `rating`
     val timesSeen: Int = 0,
     val lastSeenAt: Long? = null,
     val inReviewList: Boolean = false,

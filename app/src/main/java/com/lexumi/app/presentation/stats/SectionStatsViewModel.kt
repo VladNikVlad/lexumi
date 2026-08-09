@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.lexumi.app.domain.model.Word
 import com.lexumi.app.domain.repository.TopicRepository
 import com.lexumi.app.domain.repository.WordRepository
-import com.lexumi.app.domain.usecase.SCORE_TO_MASTER
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,18 +18,8 @@ data class SectionWordStats(
     val learnedCount: Int = 0,
 )
 
-/**
- * A word counts as "learned" once it's answered correctly at least 80% of
- * the time after being repeated 10+ times, or the user tapped "Вже знаю" on
- * it — either way it must have progressed past the very first level.
- */
-private fun isLearned(word: Word): Boolean {
-    if (word.level < 1) return false
-    if (word.score >= SCORE_TO_MASTER) return true // reached via practice, or set directly by "Вже знаю"
-    if (word.timesSeen < 10) return false
-    val accuracy = word.totalCorrect * 100.0 / word.timesSeen
-    return accuracy >= 80.0
-}
+/** A word counts as "learned" once it has moved past the very first (multiple-choice) rating. */
+private fun isLearned(word: Word): Boolean = word.rating >= 1
 
 @HiltViewModel
 class SectionStatsViewModel @Inject constructor(

@@ -68,7 +68,7 @@
     <!-- Settings -->
     <string name="settings">Settings</string>
     <string name="app_language">App language</string>
-    <string name="words_per_session">Words per session</string>
+    <string name="words_per_session">Words/sentences per session</string>
     <string name="repetitions">Number of repetitions</string>
     <string name="reminders">Study reminders</string>
     <string name="profile_section">Profile</string>
