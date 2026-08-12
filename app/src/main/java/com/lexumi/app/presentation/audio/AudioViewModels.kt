@@ -31,7 +31,6 @@ data class AudioPlayerUiState(
     val questions: List<TestQuestion> = emptyList(),
     val rules: List<Rule> = emptyList(),
     val showTranslation: Boolean = false,
-    val isPlaying: Boolean = false,
 )
 
 @HiltViewModel
@@ -55,5 +54,4 @@ class AudioPlayerViewModel @Inject constructor(
     }
 
     fun toggleTranslation() { _uiState.value = _uiState.value.copy(showTranslation = !_uiState.value.showTranslation) }
-    fun setPlaying(playing: Boolean) { _uiState.value = _uiState.value.copy(isPlaying = playing) }
 }
