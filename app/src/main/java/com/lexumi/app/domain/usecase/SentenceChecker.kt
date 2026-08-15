@@ -41,7 +41,10 @@ object SentenceChecker {
             val isLast = i == correctWords.lastIndex
             val typed = if (isLast) stripTrailingPunctuation(userWords[i]) else userWords[i]
             val correct = if (isLast) stripTrailingPunctuation(correctWords[i]) else correctWords[i]
-            if (!typed.equals(correct, ignoreCase = true)) mismatches.add(i)
+            // A slot may itself list a couple of interchangeable words separated by "/" (e.g.
+            // "магазин/крамницю") — any of them counts, same rule as for single-word answers.
+            val acceptable = TranslationParser.acceptableAnswers(correct)
+            if (acceptable.none { it.equals(typed, ignoreCase = true) }) mismatches.add(i)
         }
 
         val category = when {
@@ -60,8 +63,15 @@ object SentenceChecker {
     /** Checks a single fill-in-the-blank word, tolerating one letter mistake same as the main word-learning engine. */
     fun checkSingleWord(userInput: String, expected: String): AnswerCheck = AnswerChecker.check(userInput, expected)
 
+    /** A word slot's own text is stored with its "/" alternates intact (for [checkSingleWord] to
+     * validate against) — this is what to show on screen instead: just the first/primary one. */
+    fun displayWord(word: String): String = TranslationParser.displayPrimary(word)
+
     private fun tokenize(s: String): List<String> =
-        s.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        s.trim()
+            .replace(Regex("\\s*/\\s*"), "/") // "магазин / крамницю" -> "магазин/крамницю", one slot
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
 
     private fun stripTrailingPunctuation(word: String): String =
         word.trimEnd('.', '!', '?', ',', ';', ':')

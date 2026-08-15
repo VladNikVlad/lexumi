@@ -3,8 +3,10 @@ package com.lexumi.app.presentation.learnwords
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +23,8 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.VolumeUp
+//import androidx.compose.material.icons.outlined.Mic as OutlinedMic
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
@@ -38,7 +43,9 @@ import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiTextField
 import com.lexumi.app.presentation.components.PillActionButton
 import com.lexumi.app.presentation.theme.LexumiError
+import com.lexumi.app.presentation.theme.LexumiIndigo
 import com.lexumi.app.presentation.theme.LexumiOutline
+import com.lexumi.app.presentation.theme.LexumiPurpleLight
 import com.lexumi.app.presentation.theme.LexumiSuccess
 import com.lexumi.app.util.ImageCompressor
 import java.io.File
@@ -68,6 +75,8 @@ fun WordSessionBody(
     onSelectMatchingRight: ((Long) -> Unit)? = null,
     onStartHearOnlyVoice: (() -> Unit)? = null,
     onDisableVoiceForSession: (() -> Unit)? = null,
+    onEditVoiceCardWord: ((term: String, translation: String, imagePath: String?, ruleId: Long?) -> Unit)? = null,
+    onDeleteVoiceCardWord: (() -> Unit)? = null,
     doneLabel: String = "Готово",
     availableRules: List<Rule> = emptyList(),
     onEditWord: ((term: String, translation: String, imagePath: String?, ruleId: Long?) -> Unit)? = null,
@@ -238,8 +247,12 @@ fun WordSessionBody(
             }
         }
 
-        // Top-right "⋮" menu — edit or delete the word currently on screen.
-        if ((onEditWord != null || onDeleteWord != null) && state.prompt != null) {
+        // Top-right "⋮" menu — edit or delete whichever word is currently on screen, be it the
+        // main-pass prompt or the current "say it aloud" cards-round card.
+        val menuWord = state.prompt?.word ?: state.voiceMastery?.let { it.cards.getOrNull(it.index)?.word }
+        val onEditCurrentWord = if (state.prompt != null) onEditWord else onEditVoiceCardWord
+        val onDeleteCurrentWord = if (state.prompt != null) onDeleteWord else onDeleteVoiceCardWord
+        if ((onEditCurrentWord != null || onDeleteCurrentWord != null) && menuWord != null) {
             Box(modifier = Modifier.align(Alignment.TopEnd).zIndex(10f).statusBarsPadding().padding(16.dp)) {
                 IconButton(
                     onClick = { menuExpanded = true },
@@ -248,14 +261,14 @@ fun WordSessionBody(
                     Icon(Icons.Filled.MoreVert, contentDescription = "Ще")
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                    if (onEditWord != null) {
+                    if (onEditCurrentWord != null) {
                         DropdownMenuItem(
                             text = { Text("Редагувати слово") },
                             leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
                             onClick = { menuExpanded = false; showEditDialog = true },
                         )
                     }
-                    if (onDeleteWord != null) {
+                    if (onDeleteCurrentWord != null) {
                         DropdownMenuItem(
                             text = { Text("Видалити слово") },
                             leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
@@ -266,21 +279,21 @@ fun WordSessionBody(
             }
         }
 
-        if (showEditDialog && state.prompt != null && onEditWord != null) {
+        if (showEditDialog && menuWord != null && onEditCurrentWord != null) {
             EditWordDialog(
-                initialTerm = state.prompt.word.term,
-                initialTranslation = state.prompt.word.translation,
-                initialImagePath = state.prompt.word.imagePath,
-                initialRuleId = state.prompt.word.ruleId,
-                timesSeen = state.prompt.word.timesSeen,
-                totalCorrect = state.prompt.word.totalCorrect,
-                bestStreak = state.prompt.word.bestStreak,
+                initialTerm = menuWord.term,
+                initialTranslation = menuWord.translation,
+                initialImagePath = menuWord.imagePath,
+                initialRuleId = menuWord.ruleId,
+                timesSeen = menuWord.timesSeen,
+                totalCorrect = menuWord.totalCorrect,
+                bestStreak = menuWord.bestStreak,
                 rules = availableRules,
                 error = state.editError,
                 onClearError = onClearEditError,
                 onDismiss = { showEditDialog = false; onClearEditError() },
                 onSave = { term, translation, imagePath, ruleId ->
-                    onEditWord(term, translation, imagePath, ruleId)
+                    onEditCurrentWord(term, translation, imagePath, ruleId)
                     showEditDialog = false
                 },
             )
@@ -292,7 +305,7 @@ fun WordSessionBody(
                 title = { Text("Видалити слово?") },
                 text = { Text("Цю дію не можна скасувати.") },
                 confirmButton = {
-                    TextButton(onClick = { showDeleteConfirm = false; onDeleteWord?.invoke() }) {
+                    TextButton(onClick = { showDeleteConfirm = false; onDeleteCurrentWord?.invoke() }) {
                         Text("Видалити", color = LexumiError)
                     }
                 },
@@ -322,6 +335,48 @@ private fun HearOnlyCard(onReplay: (() -> Unit)?) {
     }
 }
 
+/**
+ * The "say it out loud" mic button: a soft lavender circle inside a thin ring, with an outline
+ * mic icon — the main call-to-action for the cards round, replacing the old text pill. While
+ * [listening] it gently pulses so it's obvious the app is actively recording.
+ */
+@Composable
+private fun MicCircleButton(onClick: () -> Unit, listening: Boolean = false, size: androidx.compose.ui.unit.Dp = 132.dp, iconSize: androidx.compose.ui.unit.Dp = 48.dp) {
+    val pulseTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "mic-pulse")
+    val pulseScale by pulseTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (listening) 1.08f else 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(650, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse,
+        ),
+        label = "mic-pulse-scale",
+    )
+    Box(
+        modifier = Modifier
+            .graphicsLayer { scaleX = pulseScale; scaleY = pulseScale }
+            .size(size)
+            .clip(CircleShape)
+            .then(
+                if (listening) Modifier.background(LexumiPurpleLight.copy(alpha = 0.25f))
+                else Modifier,
+            )
+            .border(1.5.dp, LexumiOutline.copy(alpha = if (listening) 0.7f else 0.35f), CircleShape)
+            .padding(9.dp)
+            .clip(CircleShape)
+            .background(LexumiPurpleLight.copy(alpha = if (listening) 0.75f else 0.55f))
+            .then(if (listening) Modifier else Modifier.clickable(onClick = onClick)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Mic,
+            contentDescription = "Говорити",
+            tint = LexumiIndigo,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
 @Composable
 private fun ColumnScope.VoiceMasteryBody(
     state: VoiceMasteryState,
@@ -337,11 +392,11 @@ private fun ColumnScope.VoiceMasteryBody(
     Spacer(Modifier.height(28.dp))
 
     // A fresh card starts listening automatically — no extra tap needed between cards.
-    LaunchedEffect(card.wordId) {
+    LaunchedEffect(card.word.id) {
         if (state.correct == null && !state.listening) onStartListening()
     }
 
-    WordDisplayCard(text = TranslationParser.displayPrimary(card.translation), onSpeak = null)
+    WordDisplayCard(text = TranslationParser.displayPrimary(card.word.translation), onSpeak = null)
     Spacer(Modifier.height(12.dp))
     // Always visible while testing — shows exactly what the recognizer is hearing (or why it isn't).
     Text(
@@ -354,7 +409,7 @@ private fun ColumnScope.VoiceMasteryBody(
 
     when {
         state.listening -> {
-            CircularProgressIndicator()
+            MicCircleButton(onClick = {}, listening = true)
             Spacer(Modifier.height(12.dp))
             Text("Слухаю…", style = MaterialTheme.typography.bodyMedium, color = LexumiOutline)
         }
@@ -372,15 +427,15 @@ private fun ColumnScope.VoiceMasteryBody(
                 color = LexumiError,
             )
             Spacer(Modifier.height(8.dp))
-            Text("Правильно: ${TranslationParser.displayPrimary(card.term)}", style = MaterialTheme.typography.titleMedium)
+            Text("Правильно: ${TranslationParser.displayPrimary(card.word.term)}", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(20.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = onStartListening) { Text("Спробувати ще") }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                MicCircleButton(onClick = onStartListening, size = 72.dp, iconSize = 28.dp)
                 PillActionButton(text = "Далі", icon = Icons.Filled.Check, onClick = onNext)
             }
         }
         else -> {
-            PillActionButton(text = "Говорити", icon = Icons.Filled.VolumeUp, onClick = onStartListening)
+            MicCircleButton(onClick = onStartListening)
         }
     }
 

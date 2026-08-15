@@ -20,10 +20,13 @@ object AnswerChecker {
 
         val closest = variants.minByOrNull { levenshtein(a.lowercase(), it.lowercase()) } ?: expected.trim()
         val distance = levenshtein(a.lowercase(), closest.lowercase())
+        // Shown to the user as "the correct answer" — just the first/primary variant, not the
+        // raw "варіант1 / варіант2 (пояснення)" field value.
+        val display = TranslationParser.displayPrimary(expected)
         return if (distance == 1) {
-            AnswerCheck.OneLetterTypo(correctSpelling = expected.trim())
+            AnswerCheck.OneLetterTypo(correctSpelling = display)
         } else {
-            AnswerCheck.Wrong(correctSpelling = expected.trim())
+            AnswerCheck.Wrong(correctSpelling = display)
         }
     }
 

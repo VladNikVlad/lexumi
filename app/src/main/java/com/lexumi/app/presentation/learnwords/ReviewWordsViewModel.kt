@@ -78,7 +78,7 @@ class ReviewWordsViewModel @Inject constructor(
             submitAnswer.submitChoice(prompt.word, wasCorrect)
             if (wasCorrect) soundFeedbackPlayer.playCorrect() else soundFeedbackPlayer.playWrong()
             _uiState.value = _uiState.value.copy(
-                feedback = if (wasCorrect) WordFeedback.Correct else WordFeedback.Wrong(prompt.expectedAnswer.trim()),
+                feedback = if (wasCorrect) WordFeedback.Correct else WordFeedback.Wrong(com.lexumi.app.domain.usecase.TranslationParser.displayPrimary(prompt.expectedAnswer)),
                 completedCount = _uiState.value.completedCount + 1,
             )
         }

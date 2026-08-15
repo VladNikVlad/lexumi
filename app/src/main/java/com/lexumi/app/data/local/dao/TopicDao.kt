@@ -18,6 +18,9 @@ interface TopicDao {
     @Insert
     suspend fun insert(topic: TopicEntity): Long
 
+    @Query("UPDATE topics SET position = :position WHERE id = :id")
+    suspend fun updatePosition(id: Long, position: Int)
+
     @Delete
     suspend fun delete(topic: TopicEntity)
 }

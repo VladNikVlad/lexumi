@@ -63,6 +63,9 @@ class TopicRepositoryImpl @Inject constructor(private val dao: TopicDao) : Topic
     override suspend fun exists(sectionId: Long, name: String): Boolean = dao.countByName(sectionId, name) > 0
     override suspend fun addTopic(sectionId: Long, name: String): Long =
         dao.insert(TopicEntity(sectionId = sectionId, name = name))
+    override suspend fun reorderTopics(orderedIds: List<Long>) {
+        orderedIds.forEachIndexed { index, id -> dao.updatePosition(id, index) }
+    }
 }
 
 class RuleRepositoryImpl @Inject constructor(private val dao: RuleDao) : RuleRepository {

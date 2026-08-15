@@ -1,5 +1,6 @@
 package com.lexumi.app.presentation.rules
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -92,9 +93,11 @@ fun RulesListScreen(
 
 /** Full-screen view of a single rule, opened by tapping it in the list — the small inline
  * preview isn't legible for a photographed textbook page, so this gives it the whole screen,
- * with the photo pinch-zoomable. */
+ * with the photo pinch-zoomable. Content shorter than the screen sits centered rather than
+ * pinned awkwardly to the top; longer content (a big photo + a lot of text) scrolls instead. */
 @Composable
 private fun RuleDetailOverlay(rule: Rule, onClose: () -> Unit) {
+    BackHandler(onBack = onClose)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -113,28 +116,28 @@ private fun RuleDetailOverlay(rule: Rule, onClose: () -> Unit) {
                 Text(rule.name, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
             }
 
-            if (rule.imagePath != null) {
-                // The image gets the lion's share of the screen — that's the whole point of
-                // this view (being able to actually read a photographed page).
-                ZoomableImage(
-                    model = rule.imagePath,
-                    contentDescription = rule.name,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(if (rule.text.isNotBlank()) 0.65f else 1f),
-                )
-            }
-
-            if (rule.text.isNotBlank()) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(if (rule.imagePath != null) 0.35f else 1f)
-                        .background(Color.White.copy(alpha = 0.08f))
                         .verticalScroll(rememberScrollState())
-                        .padding(20.dp),
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(rule.text, style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                    if (rule.imagePath != null) {
+                        // Sized to its own content up to a generous cap, rather than always
+                        // stretching to fill the remaining space — a short rule with a small
+                        // photo shouldn't blow the image up to look like a big empty page.
+                        ZoomableImage(
+                            model = rule.imagePath,
+                            contentDescription = rule.name,
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                        )
+                        if (rule.text.isNotBlank()) Spacer(Modifier.height(20.dp))
+                    }
+                    if (rule.text.isNotBlank()) {
+                        Text(rule.text, style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                    }
                 }
             }
         }

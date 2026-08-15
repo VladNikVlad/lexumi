@@ -199,12 +199,13 @@ fun SentencePracticeScreen(
                             buildAnnotatedString {
                                 result.correctWords.forEachIndexed { index, word ->
                                     if (index > 0) append(" ")
+                                    val display = SentenceChecker.displayWord(word)
                                     if (index in result.mismatchedIndices) {
                                         withStyle(androidx.compose.ui.text.SpanStyle(color = LexumiError, fontWeight = FontWeight.Bold)) {
-                                            append(word)
+                                            append(display)
                                         }
                                     } else {
-                                        append(word)
+                                        append(display)
                                     }
                                 }
                             },
@@ -277,7 +278,7 @@ private fun HintFillBlanks(
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(110.dp)) {
                         // Tap the small hint icon if stuck — shows the word so you can type it and keep going.
                         if (index in hint.revealed) {
-                            Text(word, style = MaterialTheme.typography.bodySmall, color = LexumiOutline)
+                            Text(SentenceChecker.displayWord(word), style = MaterialTheme.typography.bodySmall, color = LexumiOutline)
                             Spacer(Modifier.height(2.dp))
                         }
                         Row(verticalAlignment = Alignment.Bottom) {
@@ -301,7 +302,7 @@ private fun HintFillBlanks(
                         }
                     }
                 } else {
-                    Text(word, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 14.dp))
+                    Text(SentenceChecker.displayWord(word), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 14.dp))
                 }
             }
         }

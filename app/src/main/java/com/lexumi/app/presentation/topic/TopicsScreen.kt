@@ -37,6 +37,7 @@ fun TopicsScreen(
             addLabel = stringResource(R.string.add_topic),
             onItemClick = onTopicChosen,
             onAddClick = onAddTopic,
+            onReorder = viewModel::reorder,
         )
     }
 }

@@ -146,20 +146,34 @@ class SubmitWordAnswerUseCase @Inject constructor(private val wordRepository: Wo
  * all shuffled together. Returns word IDs rather than snapshots, since a
  * word's rating/streak can change between its own repeats within the session.
  */
-class GetSessionWordsUseCase @Inject constructor(private val wordRepository: WordRepository) {
-    suspend operator fun invoke(topicId: Long, wordsPerSession: Int, repetitions: Int): List<Long> {
-        val all = wordRepository.getWords(topicId)
-        val practicable = all.filter { it.rating == 0 || it.rating == 1 || it.rating == 3 }
-        val sorted = practicable.sortedBy { it.timesSeen }
-        val chosenIds = sorted.take(wordsPerSession).map { it.id }
-        val repeatCount = repetitions.coerceAtLeast(1)
-        val queue = buildList { repeat(repeatCount) { addAll(chosenIds) } }
-        return queue.shuffled()
-    }
-}
+/** What one learning session should practice, decided together so the "words per session"
+ * setting is a single shared budget rather than two separate unlimited pools. */
+data class WordSessionPlan(
+    /** Main-pass queue (ratings 0/1/3 — choice, typed, hear-only), word IDs, already repeated
+     * per the "repetitions" setting and shuffled. */
+    val mainPassQueue: List<Long>,
+    /** Rating-2 words for the end-of-session "say it aloud" cards round — one attempt each, no repeats. */
+    val cardsRoundWordIds: List<Long>,
+)
 
-/** All of this topic's rating-2 words — the pool for the end-of-session "cards" voice round. */
-class GetCardsRoundWordsUseCase @Inject constructor(private val wordRepository: WordRepository) {
-    suspend operator fun invoke(topicId: Long): List<Word> =
-        wordRepository.getWords(topicId).filter { it.rating == 2 }
+/**
+ * Picks the words for one learning session out of a single shared budget
+ * ("words per session"), split between the main pass (ratings 0/1/3 —
+ * multiple-choice, typed, hear-only) and the end-of-session cards round
+ * (rating 2 — say it aloud): e.g. 15 words per session with 5 of them
+ * already at the cards stage means 5 cards + 10 main-pass words, not 15 of
+ * each. Brand-new / least-seen words are prioritised first; rating-4
+ * (mastered) words are left out entirely.
+ */
+class GetSessionWordsUseCase @Inject constructor(private val wordRepository: WordRepository) {
+    suspend operator fun invoke(topicId: Long, wordsPerSession: Int, repetitions: Int): WordSessionPlan {
+        val all = wordRepository.getWords(topicId)
+        val practicable = all.filter { it.rating in 0..3 }
+        val chosen = practicable.sortedBy { it.timesSeen }.take(wordsPerSession)
+        val mainIds = chosen.filter { it.rating != 2 }.map { it.id }
+        val cardIds = chosen.filter { it.rating == 2 }.map { it.id }
+        val repeatCount = repetitions.coerceAtLeast(1)
+        val mainQueue = buildList { repeat(repeatCount) { addAll(mainIds) } }.shuffled()
+        return WordSessionPlan(mainQueue, cardIds)
+    }
 }

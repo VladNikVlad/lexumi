@@ -32,6 +32,8 @@ interface TopicRepository {
     suspend fun getTopic(id: Long): Topic?
     suspend fun exists(sectionId: Long, name: String): Boolean
     suspend fun addTopic(sectionId: Long, name: String): Long
+    /** Persists a new drag-and-drop order — [orderedIds] is the full, final top-to-bottom order. */
+    suspend fun reorderTopics(orderedIds: List<Long>)
 }
 
 interface RuleRepository {

@@ -89,8 +89,9 @@ fun AudioPlayerScreen(
             }
         }
 
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp).padding(top = 56.dp),
+            modifier = Modifier.verticalScroll(rememberScrollState()).padding(28.dp).padding(top = 72.dp, bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(dialog.name, style = MaterialTheme.typography.titleLarge)
@@ -191,6 +192,7 @@ fun AudioPlayerScreen(
                     Text(q.questionText, style = MaterialTheme.typography.bodyMedium)
                 }
             }
+        }
         }
     }
 }

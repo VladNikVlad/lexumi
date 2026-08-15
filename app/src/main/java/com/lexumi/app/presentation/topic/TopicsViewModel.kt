@@ -9,11 +9,12 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class TopicsViewModel @Inject constructor(
-    topicRepository: TopicRepository,
+    private val topicRepository: TopicRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -21,4 +22,9 @@ class TopicsViewModel @Inject constructor(
 
     val topics: StateFlow<List<Topic>> = topicRepository.observeTopics(sectionId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Drag-and-drop reorder — [orderedIds] is the full, final top-to-bottom order. */
+    fun reorder(orderedIds: List<Long>) {
+        viewModelScope.launch { topicRepository.reorderTopics(orderedIds) }
+    }
 }

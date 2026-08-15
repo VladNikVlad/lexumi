@@ -13,7 +13,6 @@ import com.lexumi.app.domain.repository.SectionRepository
 import com.lexumi.app.domain.repository.TopicRepository
 import com.lexumi.app.domain.repository.WordRepository
 import com.lexumi.app.domain.usecase.BuildMultipleChoiceUseCase
-import com.lexumi.app.domain.usecase.GetCardsRoundWordsUseCase
 import com.lexumi.app.domain.usecase.GetSessionWordsUseCase
 import com.lexumi.app.domain.usecase.SubmitWordAnswerUseCase
 import com.lexumi.app.domain.usecase.TranslationParser
@@ -66,7 +65,7 @@ data class MatchingGameState(
     val wrongFlashRightId: Long? = null,
 )
 
-data class VoiceCard(val wordId: Long, val term: String, val translation: String)
+data class VoiceCard(val word: Word)
 
 data class VoiceMasteryState(
     val cards: List<VoiceCard>,
@@ -104,7 +103,6 @@ data class LearnWordsUiState(
 @HiltViewModel
 class LearnWordsViewModel @Inject constructor(
     private val getSessionWords: GetSessionWordsUseCase,
-    private val getCardsRoundWords: GetCardsRoundWordsUseCase,
     private val buildMultipleChoice: BuildMultipleChoiceUseCase,
     private val submitAnswer: SubmitWordAnswerUseCase,
     private val editWord: com.lexumi.app.domain.usecase.EditWordUseCase,
@@ -136,7 +134,10 @@ class LearnWordsViewModel @Inject constructor(
     val voiceName: StateFlow<String?> = _voiceName
 
     private var queue: MutableList<Long> = mutableListOf()
-    private var distinctWordIds: List<Long> = emptyList()
+    private var cardsRoundWordIds: List<Long> = emptyList()
+    /** How many words the matching game draws, independently of the main pass — same cap as
+     * "words per session" so it stays consistent with the user's chosen session size. */
+    private var matchingGamePoolSize: Int = 15
 
     // --- session-only mistake tracking: retry a word within its own scheduled
     // repeats, then a single "work on mistakes" pass once the main pass is done ---
@@ -152,9 +153,13 @@ class LearnWordsViewModel @Inject constructor(
         viewModelScope.launch {
             prefs.setLastSession(topicId, "learn_words")
             val wordsPerSession = prefs.wordsPerSession.first()
+            matchingGamePoolSize = wordsPerSession
             val repetitions = prefs.repetitions.first()
-            queue = getSessionWords(topicId, wordsPerSession, repetitions).toMutableList()
-            distinctWordIds = queue.distinct()
+            // A single shared budget of "words per session", split between the main pass and
+            // the cards round — not two separately-unlimited pools.
+            val plan = getSessionWords(topicId, wordsPerSession, repetitions)
+            queue = plan.mainPassQueue.toMutableList()
+            cardsRoundWordIds = plan.cardsRoundWordIds
             _uiState.value = _uiState.value.copy(totalCount = queue.size, loading = false)
             advance()
 
@@ -215,15 +220,15 @@ class LearnWordsViewModel @Inject constructor(
 
     // ---------------- cards round (rating 2, voice) ----------------
 
-    /** All of the topic's rating-2 words — not just the ones seen this session, since progress
-     * toward rating 3 is tracked on the word itself and carries over between sessions. */
+    /** This session's share of rating-2 words (part of the shared "words per session" budget —
+     * see [GetSessionWordsUseCase]), for the "say it aloud" cards round. */
     private suspend fun enterCardsRound() {
-        val words = if (voiceDisabledThisSession) emptyList() else getCardsRoundWords(topicId)
+        val words = if (voiceDisabledThisSession) emptyList() else cardsRoundWordIds.mapNotNull { wordRepository.getWord(it) }
         if (words.isEmpty()) { advance(); return }
         _uiState.value = _uiState.value.copy(
             prompt = null,
             inMistakeReview = false,
-            voiceMastery = VoiceMasteryState(cards = words.map { VoiceCard(it.id, it.term, it.translation) }),
+            voiceMastery = VoiceMasteryState(cards = words.map { VoiceCard(it) }),
         )
     }
 
@@ -247,12 +252,11 @@ class LearnWordsViewModel @Inject constructor(
                 // Checks the full phrase first, then trailing windows of increasing size, so a
                 // multi-word answer (e.g. "la pizarra") still matches even if the recognizer
                 // tacked on extra mis-heard words.
-                val expected = TranslationParser.acceptableAnswers(card.term)
+                val expected = TranslationParser.acceptableAnswers(card.word.term)
                 val isCorrect = voiceRecognizer.matches(heardRaw, expected)
                 if (isCorrect) soundFeedbackPlayer.playCorrect() else soundFeedbackPlayer.playWrong()
                 viewModelScope.launch {
-                    val word = wordRepository.getWord(card.wordId)
-                    if (word != null) submitAnswer.submitVoiceCardAnswer(word, isCorrect)
+                    submitAnswer.submitVoiceCardAnswer(card.word, isCorrect)
                     val current = _uiState.value.voiceMastery ?: return@launch
                     _uiState.value = _uiState.value.copy(voiceMastery = current.copy(listening = false, heard = heardRaw, correct = isCorrect))
                 }
@@ -275,9 +279,43 @@ class LearnWordsViewModel @Inject constructor(
         val state = _uiState.value.voiceMastery ?: return
         val card = state.cards.getOrNull(state.index) ?: return
         viewModelScope.launch {
-            val word = wordRepository.getWord(card.wordId)
-            if (word != null) submitAnswer.markAsKnown(word)
+            submitAnswer.markAsKnown(card.word)
             nextVoiceCard()
+        }
+    }
+
+    /** Editing/deleting is available during the cards round too, same as the main pass — there
+     * was previously no menu at all here since this round doesn't use `prompt`. */
+    fun editCurrentVoiceCardWord(term: String, translation: String, imagePath: String?, ruleId: Long?) {
+        val state = _uiState.value.voiceMastery ?: return
+        val card = state.cards.getOrNull(state.index) ?: return
+        viewModelScope.launch {
+            when (editWord(card.word, term, translation, imagePath, ruleId)) {
+                is com.lexumi.app.domain.usecase.AddResult.Success -> {
+                    val updated = card.word.copy(term = term.trim(), translation = translation.trim(), imagePath = imagePath, ruleId = ruleId)
+                    val newCards = state.cards.toMutableList().also { it[state.index] = VoiceCard(updated) }
+                    _uiState.value = _uiState.value.copy(voiceMastery = state.copy(cards = newCards), editError = null)
+                }
+                com.lexumi.app.domain.usecase.AddResult.AlreadyExists -> _uiState.value = _uiState.value.copy(editError = "Таке слово вже є в цій темі")
+                com.lexumi.app.domain.usecase.AddResult.Blank -> _uiState.value = _uiState.value.copy(editError = "Заповніть слово і переклад")
+            }
+        }
+    }
+
+    fun deleteCurrentVoiceCardWord() {
+        val state = _uiState.value.voiceMastery ?: return
+        val card = state.cards.getOrNull(state.index) ?: return
+        viewModelScope.launch {
+            deleteWord(card.word)
+            val newCards = state.cards.toMutableList().also { it.removeAt(state.index) }
+            if (newCards.isEmpty()) {
+                advance() // cards round is over — move on to matching pairs
+            } else {
+                val newIndex = state.index.coerceAtMost(newCards.size - 1)
+                _uiState.value = _uiState.value.copy(
+                    voiceMastery = state.copy(cards = newCards, index = newIndex, listening = false, heard = null, correct = null),
+                )
+            }
         }
     }
 
@@ -295,10 +333,13 @@ class LearnWordsViewModel @Inject constructor(
     // ---------------- "Знайти пару" round (rating 0/1, this session's words) ----------------
 
     private suspend fun enterMatchingGame() {
-        // No rating filter here — this reviews whatever words were actually practiced in this
-        // session's main pass, regardless of what rating they ended on (a word promoted to the
-        // cards round mid-session shouldn't vanish from its own session's matching game).
-        val words = distinctWordIds.mapNotNull { wordRepository.getWord(it) }
+        // Drawn independently from the topic's rating 0/1 words — not limited to whatever ended
+        // up in this session's main pass — so the game is always there whenever there are
+        // eligible words at all, even in a session mostly spent on the cards round.
+        val words = wordRepository.getWords(topicId)
+            .filter { it.rating == 0 || it.rating == 1 }
+            .sortedBy { it.timesSeen }
+            .take(matchingGamePoolSize)
         if (words.isEmpty()) { finishSession(); return }
         val pairs = words.map { MatchingPair(it.id, it.term, it.translation) }
         _uiState.value = _uiState.value.copy(
@@ -366,7 +407,7 @@ class LearnWordsViewModel @Inject constructor(
             if (wasCorrect) { soundFeedbackPlayer.playCorrect(); registerSuccess(prompt.word.id) }
             else { soundFeedbackPlayer.playWrong(); registerMistake(prompt.word.id) }
             _uiState.value = _uiState.value.copy(
-                feedback = if (wasCorrect) WordFeedback.Correct else WordFeedback.Wrong(prompt.expectedAnswer.trim()),
+                feedback = if (wasCorrect) WordFeedback.Correct else WordFeedback.Wrong(TranslationParser.displayPrimary(prompt.expectedAnswer)),
                 completedCount = _uiState.value.completedCount + 1,
             )
         }

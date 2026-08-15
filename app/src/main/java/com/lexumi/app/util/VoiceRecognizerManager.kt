@@ -76,7 +76,7 @@ class VoiceRecognizerManager @Inject constructor(
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             // Silence AFTER the user has started talking — ends listening and finalizes the answer.
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000)
             if (locale != null) putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale.toLanguageTag())
@@ -106,6 +106,9 @@ class VoiceRecognizerManager @Inject constructor(
         fun startAttempt() {
             val r = SpeechRecognizer.createSpeechRecognizer(context)
             recognizer = r
+
+
+
             r.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) = onDebug("Готовий, кажи…")
                 override fun onBeginningOfSpeech() {
@@ -138,20 +141,20 @@ class VoiceRecognizerManager @Inject constructor(
                     if (finished) return
                     val noSpeechYet = !speechStarted && (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
                     val elapsed = System.currentTimeMillis() - attemptStartedAt
-                    if (noSpeechYet && elapsed < leadingGraceMillis && retries < 4) {
-                        // The recognizer gave up before the user said anything at all, and it's
-                        // still within the initial grace period — quietly try again with a fresh
-                        // instance instead of ending the attempt on a false "no speech".
-                        retries++
-                        onDebug("Ще чекаю на початок мовлення…")
-                        r.destroy()
-                        if (recognizer === r) recognizer = null
-                        // A short delay before recreating gives the previous instance's audio
-                        // resources time to actually release — restarting instantly is what was
-                        // causing the mic to end up stuck silent on some devices.
-                        mainHandler.postDelayed({ if (!finished) startAttempt() }, 200)
-                        return
-                    }
+//                    if (noSpeechYet && elapsed < leadingGraceMillis && retries < 4) {
+//                        // The recognizer gave up before the user said anything at all, and it's
+//                        // still within the initial grace period — quietly try again with a fresh
+//                        // instance instead of ending the attempt on a false "no speech".
+//                        retries++
+//                        onDebug("Ще чекаю на початок мовлення…")
+//                        r.destroy()
+//                        if (recognizer === r) recognizer = null
+//                        // A short delay before recreating gives the previous instance's audio
+//                        // resources time to actually release — restarting instantly is what was
+//                        // causing the mic to end up stuck silent on some devices.
+//                        mainHandler.postDelayed({ if (!finished) startAttempt() }, 200)
+//                        return
+//                    }
                     if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
                         finishWithFallback("Помилка: ${errorMessage(error)}.")
                     } else {

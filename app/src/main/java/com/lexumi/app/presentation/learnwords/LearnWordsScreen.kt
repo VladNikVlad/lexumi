@@ -36,6 +36,8 @@ fun LearnWordsScreen(
         availableRules = rules,
         onEditWord = { term, translation, imagePath, ruleId -> viewModel.editCurrentWord(term, translation, imagePath, ruleId) },
         onDeleteWord = { viewModel.deleteCurrentWord() },
+        onEditVoiceCardWord = { term, translation, imagePath, ruleId -> viewModel.editCurrentVoiceCardWord(term, translation, imagePath, ruleId) },
+        onDeleteVoiceCardWord = { viewModel.deleteCurrentVoiceCardWord() },
         onClearEditError = viewModel::clearEditError,
         onSpeak = viewModel::speak,
         onSpeakNative = viewModel::speakNative,
