@@ -240,9 +240,16 @@ class LearnWordsViewModel @Inject constructor(
         val locale = ttsManager.localeFor(_voiceName.value)
         voiceRecognizer.listenOnce(
             locale = locale,
+            initialDelayMillis = 400,
             onPartial = { partial ->
                 val current = _uiState.value.voiceMastery ?: return@listenOnce
                 _uiState.value = _uiState.value.copy(voiceMastery = current.copy(debug = "Чую: «$partial»"))
+                // The instant a partial guess already matches, finalize right away instead of
+                // waiting out the full trailing-silence timeout — no reason to sit in silence
+                // once we already know the answer is right.
+                if (voiceRecognizer.matches(partial, TranslationParser.acceptableAnswers(card.word.term))) {
+                    voiceRecognizer.stopAndFinalize()
+                }
             },
             onDebug = { line ->
                 val current = _uiState.value.voiceMastery ?: return@listenOnce
@@ -436,7 +443,13 @@ class LearnWordsViewModel @Inject constructor(
         val nativeLocale = java.util.Locale.getDefault()
         voiceRecognizer.listenOnce(
             locale = nativeLocale,
-            onPartial = { partial -> _uiState.value = _uiState.value.copy(voiceDebug = "Чую: «$partial»") },
+            initialDelayMillis = 400,
+            onPartial = { partial ->
+                _uiState.value = _uiState.value.copy(voiceDebug = "Чую: «$partial»")
+                if (voiceRecognizer.matches(partial, TranslationParser.acceptableAnswers(prompt.expectedAnswer))) {
+                    voiceRecognizer.stopAndFinalize()
+                }
+            },
             onDebug = { line -> _uiState.value = _uiState.value.copy(voiceDebug = line) },
             onResult = { heardRaw -> submitTyped(heardRaw) },
         )

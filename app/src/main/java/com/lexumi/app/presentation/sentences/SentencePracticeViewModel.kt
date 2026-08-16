@@ -242,7 +242,13 @@ class SentencePracticeViewModel @Inject constructor(
         val locale = ttsManager.localeFor(voiceName)
         voiceRecognizer.listenOnce(
             locale = locale,
-            onPartial = { partial -> _uiState.value = _uiState.value.copy(voiceDebug = "Чую: «$partial»") },
+            initialDelayMillis = 400,
+            onPartial = { partial ->
+                _uiState.value = _uiState.value.copy(voiceDebug = "Чую: «$partial»")
+                if (voiceRecognizer.matches(partial, targetOptions(prompt))) {
+                    voiceRecognizer.stopAndFinalize()
+                }
+            },
             onDebug = { line -> _uiState.value = _uiState.value.copy(voiceDebug = line) },
             onResult = { heardRaw ->
                 _uiState.value = _uiState.value.copy(listening = false, heard = heardRaw)

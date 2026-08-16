@@ -3,6 +3,8 @@ package com.lexumi.app.util
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -17,10 +19,15 @@ import javax.inject.Singleton
  * sentence is fully learned, the app stops asking for typed answers and
  * asks the user to speak it instead.
  *
- * Timing: the user gets about 2 seconds of quiet at the start before giving
- * up on "no speech at all" (enough to take a breath), and once they've
- * started talking, about 1.5 seconds of silence after they stop is what
- * ends listening and finalizes the answer.
+ * One attempt = one system listening session, started once and left alone —
+ * no restarting mid-attempt. An earlier version tried to "extend" the
+ * leading silence by destroying and recreating the recognizer when it gave
+ * up too early; that raced unpredictably against the device's own internal
+ * timeout (different on every OEM) and caused the exact "beep-beep-beep,
+ * mic keeps turning on and off" experience it was trying to prevent. If more
+ * breathing room is needed before listening starts, delay the call to
+ * [listenOnce] itself (see [initialDelayMillis]) rather than fight the
+ * recognizer once it's already running.
  *
  * [onDebug] reports what's happening as it happens (ready/listening/partial
  * hypotheses/errors) — wire it up in the UI while testing to see exactly why
@@ -32,24 +39,32 @@ class VoiceRecognizerManager @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     private var recognizer: SpeechRecognizer? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingStart: Runnable? = null
 
     val isAvailable: Boolean get() = SpeechRecognizer.isRecognitionAvailable(context)
-
-    /** How long to keep silently retrying if the recognizer gives up before the user has said anything. */
-    private val leadingGraceMillis = 2000L
 
     /**
      * Starts listening once for [locale] (falls back to the device default
      * if null/unavailable). Calls [onResult] exactly once with the best
      * recognized phrase, or an empty string if nothing was ever heard.
+     *
+     * [initialDelayMillis] delays the actual start of listening — e.g. to
+     * give the user a moment to read the word/take a breath before the mic
+     * opens, without touching how long the recognizer itself waits once
+     * it's running.
+     *
      * [onPartial] fires repeatedly with the current best guess *while* the
-     * user is still talking — handy to show live under a card so you can see
-     * whether the recognizer is hearing anything at all. [onDebug] reports
-     * status/errors as short human-readable lines. Calling this again while
-     * already listening cancels the previous attempt.
+     * user is still talking — used both for the live debug line and for
+     * early-stopping (see [stopAndFinalize]) the instant a partial guess
+     * already matches the expected answer, instead of always waiting out
+     * the full trailing-silence timeout. [onDebug] reports status/errors as
+     * short human-readable lines. Calling this again while already
+     * listening (or waiting on [initialDelayMillis]) cancels the previous attempt.
      */
     fun listenOnce(
         locale: Locale?,
+        initialDelayMillis: Long = 0,
         onPartial: (String) -> Unit = {},
         onDebug: (String) -> Unit = {},
         onResult: (String) -> Unit,
@@ -60,61 +75,37 @@ class VoiceRecognizerManager @Inject constructor(
             onResult("")
             return
         }
-        var finished = false
-        var speechStarted = false
-        var retries = 0
-        val attemptStartedAt = System.currentTimeMillis()
-        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-        // Some recognizer services (notably on certain OEM builds) occasionally return an
-        // empty final result even though they clearly heard something — the partial
-        // hypotheses along the way had real text. Keep the last non-empty partial as a
-        // fallback so a good guess isn't thrown away just because the "final" pass came back empty.
-        var lastPartial = ""
 
-        fun buildIntent() = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            // Silence AFTER the user has started talking — ends listening and finalizes the answer.
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000)
-            if (locale != null) putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale.toLanguageTag())
-        }
+        fun start() {
+            var finished = false
+            // Some recognizer services (notably on certain OEM builds) occasionally return an
+            // empty final result even though they clearly heard something — the partial
+            // hypotheses along the way had real text. Keep the last non-empty partial as a
+            // fallback so a good guess isn't thrown away just because the "final" pass came back empty.
+            var lastPartial = ""
 
-        fun finish(text: String) {
-            if (finished) return
-            finished = true
-            onResult(text)
-            recognizer?.destroy()
-            recognizer = null
-        }
-        fun finishWithFallback(reason: String) {
-            if (lastPartial.isNotBlank()) {
-                onDebug("$reason Використав останнє почуте: «$lastPartial»")
-                finish(lastPartial)
-            } else {
-                onDebug(reason)
-                finish("")
+            fun finish(text: String) {
+                if (finished) return
+                finished = true
+                onResult(text)
+                recognizer?.destroy()
+                recognizer = null
             }
-        }
+            fun finishWithFallback(reason: String) {
+                if (lastPartial.isNotBlank()) {
+                    onDebug("$reason Використав останнє почуте: «$lastPartial»")
+                    finish(lastPartial)
+                } else {
+                    onDebug(reason)
+                    finish("")
+                }
+            }
 
-        // Reusing the very same recognizer instance to restart listening from inside its own
-        // onError callback is unreliable on a lot of devices — it can silently leave the
-        // recognizer dead instead of actually restarting it. A fresh instance each time is the
-        // reliable way to retry.
-        fun startAttempt() {
             val r = SpeechRecognizer.createSpeechRecognizer(context)
             recognizer = r
-
-
-
             r.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) = onDebug("Готовий, кажи…")
-                override fun onBeginningOfSpeech() {
-                    speechStarted = true
-                    onDebug("Чую мовлення…")
-                }
+                override fun onBeginningOfSpeech() = onDebug("Чую мовлення…")
                 override fun onRmsChanged(rmsdB: Float) = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
                 override fun onEndOfSpeech() = onDebug("Обробляю…")
@@ -139,22 +130,6 @@ class VoiceRecognizerManager @Inject constructor(
                 }
                 override fun onError(error: Int) {
                     if (finished) return
-                    val noSpeechYet = !speechStarted && (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
-                    val elapsed = System.currentTimeMillis() - attemptStartedAt
-//                    if (noSpeechYet && elapsed < leadingGraceMillis && retries < 4) {
-//                        // The recognizer gave up before the user said anything at all, and it's
-//                        // still within the initial grace period — quietly try again with a fresh
-//                        // instance instead of ending the attempt on a false "no speech".
-//                        retries++
-//                        onDebug("Ще чекаю на початок мовлення…")
-//                        r.destroy()
-//                        if (recognizer === r) recognizer = null
-//                        // A short delay before recreating gives the previous instance's audio
-//                        // resources time to actually release — restarting instantly is what was
-//                        // causing the mic to end up stuck silent on some devices.
-//                        mainHandler.postDelayed({ if (!finished) startAttempt() }, 200)
-//                        return
-//                    }
                     if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
                         finishWithFallback("Помилка: ${errorMessage(error)}.")
                     } else {
@@ -163,12 +138,41 @@ class VoiceRecognizerManager @Inject constructor(
                     }
                 }
             })
-            r.startListening(buildIntent())
+
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                // Silence AFTER the user has started talking — ends listening and finalizes the answer.
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000)
+                if (locale != null) putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale.toLanguageTag())
+            }
+            r.startListening(intent)
         }
 
         if (locale != null) onDebug("Мова розпізнавання: ${locale.toLanguageTag()}")
         else onDebug("Мова розпізнавання: за замовчуванням (не визначено голос теми)")
-        startAttempt()
+
+        if (initialDelayMillis <= 0) {
+            start()
+        } else {
+            onDebug("Хвилинку…")
+            val task = Runnable { pendingStart = null; start() }
+            pendingStart = task
+            mainHandler.postDelayed(task, initialDelayMillis)
+        }
+    }
+
+    /**
+     * Ends listening right now and lets the recognizer finalize whatever it has heard so far —
+     * used for early-stopping the instant a partial result already matches the expected answer,
+     * instead of always waiting out the trailing-silence timeout. This still goes through the
+     * normal [RecognitionListener.onResults] callback, unlike [stop] which discards everything.
+     */
+    fun stopAndFinalize() {
+        recognizer?.stopListening()
     }
 
     /**
@@ -236,7 +240,11 @@ class VoiceRecognizerManager @Inject constructor(
         return dp[a.length][b.length]
     }
 
+    /** Cancels a pending delayed start (if any) and/or destroys the active recognizer without
+     * finalizing — no result callback fires. Use [stopAndFinalize] instead if a result is wanted. */
     fun stop() {
+        pendingStart?.let { mainHandler.removeCallbacks(it) }
+        pendingStart = null
         recognizer?.destroy()
         recognizer = null
     }

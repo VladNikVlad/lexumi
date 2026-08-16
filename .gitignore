@@ -11,7 +11,7 @@ captures/
 *.ap_
 *.dex
 *.class
-.log
+*.log
 bin/
 gen/
 out/
