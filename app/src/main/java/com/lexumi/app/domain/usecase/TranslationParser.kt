@@ -12,7 +12,7 @@ object TranslationParser {
     /** All variants that should be accepted as correct, explanation text stripped and trimmed. */
     fun acceptableAnswers(raw: String): List<String> {
         val variants = raw.split("/")
-            .map { stripExplanation(it).trim() }
+            .map { trimPunctuation(stripExplanation(it).trim()) }
             .filter { it.isNotBlank() }
         return variants.ifEmpty { listOf(raw.trim()) }
     }
@@ -26,4 +26,9 @@ object TranslationParser {
 
     private fun stripExplanation(text: String): String =
         text.replace(Regex("\\([^)]*\\)"), "")
+
+    /** Drops trailing punctuation a variant might end with (e.g. a "/"-split piece that kept a
+     * stray period or comma from the original sentence), so it doesn't get compared/shown with it. */
+    private fun trimPunctuation(word: String): String =
+        word.trim { it in ".,!?" }
 }

@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
@@ -24,7 +23,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.outlined.Mic as OutlinedMic
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -391,11 +390,8 @@ private fun ColumnScope.VoiceMasteryBody(
     Text("${state.index + 1} з ${state.cards.size}", style = MaterialTheme.typography.bodyMedium, color = LexumiOutline)
     Spacer(Modifier.height(28.dp))
 
-    // A fresh card starts listening automatically — no extra tap needed between cards.
-    LaunchedEffect(card.word.id) {
-        if (state.correct == null && !state.listening) onStartListening()
-    }
-
+    // Listening no longer starts on its own the moment a card appears — the user needs a moment
+    // to read the word and recall the translation first, then tap the mic when ready to say it.
     WordDisplayCard(text = TranslationParser.displayPrimary(card.word.translation), onSpeak = null)
     Spacer(Modifier.height(12.dp))
     // Always visible while testing — shows exactly what the recognizer is hearing (or why it isn't).
