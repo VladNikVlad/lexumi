@@ -56,7 +56,7 @@
     <string name="repeat_words">Repeat words</string>
 
     <!-- Topic actions -->
-    <string name="learn_rules">Learn rules</string>
+    <string name="learn_rules">Rules</string>
     <string name="learn_words">Learn words</string>
     <string name="image_tests">Flashcard test</string>
     <string name="watch_video">Watch video</string>

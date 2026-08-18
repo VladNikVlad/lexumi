@@ -56,7 +56,7 @@
     <string name="repeat_words">Повторити слова</string>
 
     <!-- Topic actions -->
-    <string name="learn_rules">Вивчати правила</string>
+    <string name="learn_rules">Правила</string>
     <string name="learn_words">Вчити слова</string>
     <string name="image_tests">Тест по картках</string>
     <string name="watch_video">Дивитися відео</string>

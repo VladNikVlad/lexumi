@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -105,15 +106,24 @@ private fun RuleDetailOverlay(rule: Rule, onClose: () -> Unit) {
             .background(Color(0xFF1B1730)),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onClose) {
+            // Pushed down clear of the screen's own top-left back button — sitting right under
+            // it was both visually cramped and, since they nearly overlapped, made this close
+            // button unreliable to tap (touches were landing on the button behind it instead).
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 40.dp, bottom = 12.dp)) {
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp),
+                ) {
                     Icon(Icons.Filled.Close, contentDescription = "Закрити", tint = Color.White)
                 }
-                Spacer(Modifier.width(4.dp))
-                Text(rule.name, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
+                Text(
+                    rule.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 56.dp),
+                )
             }
 
             Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
