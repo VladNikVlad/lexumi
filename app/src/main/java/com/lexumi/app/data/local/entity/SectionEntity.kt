@@ -22,4 +22,5 @@ data class SectionEntity(
     val languageId: Long,
     val name: String,
     val position: Int = 0,
+    val remoteId: String? = null,
 )

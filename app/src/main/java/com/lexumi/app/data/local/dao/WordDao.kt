@@ -12,6 +12,9 @@ interface WordDao {
     @Query("SELECT * FROM words WHERE topicId = :topicId")
     suspend fun getForTopic(topicId: Long): List<WordEntity>
 
+    @Query("UPDATE words SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
+
     @Query("SELECT * FROM words WHERE id = :id")
     suspend fun getById(id: Long): WordEntity?
 

@@ -30,6 +30,7 @@ fun SplashScreen(
     onNavigateWelcome: () -> Unit,
     onNavigateLanguageMenu: () -> Unit,
     onNavigateHome: (Long) -> Unit,
+    onNavigateSignIn: () -> Unit,
     viewModel: SplashViewModel = hiltViewModel(),
 ) {
     val progress by viewModel.progress.collectAsState()
@@ -40,6 +41,7 @@ fun SplashScreen(
             is SplashDestination.Welcome -> onNavigateWelcome()
             is SplashDestination.LanguageMenu -> onNavigateLanguageMenu()
             is SplashDestination.Home -> onNavigateHome(d.languageId)
+            is SplashDestination.SignIn -> onNavigateSignIn()
             SplashDestination.Loading -> Unit
         }
     }

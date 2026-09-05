@@ -41,6 +41,7 @@ fun AddWordScreen(
     val context = LocalContext.current
     var term by remember { mutableStateOf("") }
     var translation by remember { mutableStateOf("") }
+    var translationExtra by remember { mutableStateOf("") }
     var imagePath by remember { mutableStateOf<String?>(null) }
     var selectedRuleId by remember { mutableStateOf<Long?>(null) }
     var ruleMenuExpanded by remember { mutableStateOf(false) }
@@ -106,6 +107,12 @@ fun AddWordScreen(
             Spacer(Modifier.height(12.dp))
             LexumiTextField(value = translation, onValueChange = { translation = it; viewModel.clearError() }, label = "Переклад")
             Spacer(Modifier.height(12.dp))
+            LexumiTextField(
+                value = translationExtra,
+                onValueChange = { translationExtra = it; viewModel.clearError() },
+                label = "Ще один варіант перекладу (необов'язково)",
+            )
+            Spacer(Modifier.height(12.dp))
 
             if (rules.isNotEmpty()) {
                 ExposedDropdownMenuBox(expanded = ruleMenuExpanded, onExpandedChange = { ruleMenuExpanded = it }) {
@@ -128,7 +135,13 @@ fun AddWordScreen(
             PillActionButton(
                 text = "Додати слово",
                 icon = Icons.Filled.Check,
-                onClick = { viewModel.submit(imagePath, term, translation, selectedRuleId) },
+                onClick = {
+                    // A second variant is just the same "/" convention used everywhere else
+                    // (word-learning answers, sentences) — joined here so the user doesn't have
+                    // to type the "/" themselves.
+                    val combinedTranslation = if (translationExtra.isBlank()) translation else "$translation / $translationExtra"
+                    viewModel.submit(imagePath, term, combinedTranslation, selectedRuleId)
+                },
             )
         }
     }

@@ -104,4 +104,19 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
-val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+
+/**
+ * v7 -> v8: backend sync groundwork. Each of these tables can now be linked to its Supabase
+ * counterpart via `remoteId` (the row's uuid there) — null means "not published / not yet
+ * downloaded from the cloud". Publishing (admin) or downloading (regular user) fills this in;
+ * nothing else about how these tables behave locally changes.
+ */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE languages ADD COLUMN remoteId TEXT")
+        db.execSQL("ALTER TABLE sections ADD COLUMN remoteId TEXT")
+        db.execSQL("ALTER TABLE topics ADD COLUMN remoteId TEXT")
+        db.execSQL("ALTER TABLE words ADD COLUMN remoteId TEXT")
+    }
+}

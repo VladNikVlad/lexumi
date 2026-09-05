@@ -4,6 +4,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lexumi.app.data.auth.AuthRepository
 import com.lexumi.app.data.datastore.UserPreferences
 import com.lexumi.app.data.local.LexumiDatabase
 import com.lexumi.app.domain.model.UserProfile
@@ -21,6 +22,7 @@ class SettingsViewModel @Inject constructor(
     private val prefs: UserPreferences,
     private val profileRepository: ProfileRepository,
     private val database: LexumiDatabase,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     val wordsPerSession: StateFlow<Int> = prefs.wordsPerSession
@@ -70,9 +72,11 @@ class SettingsViewModel @Inject constructor(
         switchToProfile(id)
     }
 
-    /** "Вийти" — clears the active profile session; app returns to the welcome/profile picker. */
+    /** "Вийти" — signs out of the Google/Supabase session too, not just the local profile —
+     * app returns all the way to the sign-in screen, not just the local profile picker. */
     fun logout() = viewModelScope.launch {
         prefs.clearCurrentProfile()
+        authRepository.signOut()
         _loggedOut.value = true
     }
 

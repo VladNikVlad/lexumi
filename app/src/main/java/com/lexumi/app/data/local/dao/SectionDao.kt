@@ -9,6 +9,12 @@ interface SectionDao {
     @Query("SELECT * FROM sections WHERE languageId = :languageId ORDER BY position ASC, id ASC")
     fun observeForLanguage(languageId: Long): Flow<List<SectionEntity>>
 
+    @Query("SELECT * FROM sections WHERE languageId = :languageId ORDER BY position ASC, id ASC")
+    suspend fun getForLanguage(languageId: Long): List<SectionEntity>
+
+    @Query("UPDATE sections SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
+
     @Query("SELECT * FROM sections WHERE id = :id")
     suspend fun getById(id: Long): SectionEntity?
 

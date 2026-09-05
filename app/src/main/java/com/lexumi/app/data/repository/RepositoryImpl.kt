@@ -10,11 +10,11 @@ import javax.inject.Inject
 
 // ---------- mappers ----------
 private fun UserProfileEntity.toDomain() = UserProfile(id, displayName)
-private fun LanguageEntity.toDomain() = Language(id, profileId, name, voiceName)
-private fun SectionEntity.toDomain() = Section(id, languageId, name, position)
-private fun TopicEntity.toDomain() = Topic(id, sectionId, name, position)
+private fun LanguageEntity.toDomain() = Language(id, profileId, name, voiceName, remoteId)
+private fun SectionEntity.toDomain() = Section(id, languageId, name, position, remoteId)
+private fun TopicEntity.toDomain() = Topic(id, sectionId, name, position, remoteId)
 private fun RuleEntity.toDomain() = Rule(id, languageId, name, text, imagePath)
-private fun WordEntity.toDomain() = Word(id, topicId, imagePath, term, translation, ruleId, rating, correctStreak, typedStreak, typedReverseActive, voiceStreak, finalStreak, timesSeen, inReviewList, totalCorrect, bestStreak, currentStatsStreak)
+private fun WordEntity.toDomain() = Word(id, topicId, imagePath, term, translation, ruleId, rating, correctStreak, typedStreak, typedReverseActive, voiceStreak, finalStreak, timesSeen, inReviewList, totalCorrect, bestStreak, currentStatsStreak, remoteId)
 private fun ImageContentEntity.toDomain() = ImageContent(id, topicId, name, imagePath, translation)
 private fun VideoEntity.toDomain() = VideoContent(id, topicId, name, youtubeUrl, localVideoPath, originalText, translationText, ruleIds)
 private fun AudioDialogEntity.toDomain() = AudioDialog(id, topicId, name, audioPath, translationText, ruleIds)
@@ -98,6 +98,7 @@ class WordRepositoryImpl @Inject constructor(private val dao: WordDao) : WordRep
                 lastSeenAt = System.currentTimeMillis(), inReviewList = word.inReviewList,
                 addedToReviewAt = if (word.inReviewList) System.currentTimeMillis() else null,
                 totalCorrect = word.totalCorrect, bestStreak = word.bestStreak, currentStatsStreak = word.currentStatsStreak,
+                remoteId = word.remoteId,
             )
         )
     }

@@ -10,4 +10,5 @@ data class LanguageEntity(
     val name: String,
     val createdAt: Long = System.currentTimeMillis(),
     val voiceName: String? = null,
+    val remoteId: String? = null, // Supabase uuid, once published
 )

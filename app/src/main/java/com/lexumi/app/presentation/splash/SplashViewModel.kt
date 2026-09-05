@@ -2,6 +2,7 @@ package com.lexumi.app.presentation.splash
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lexumi.app.data.auth.AuthRepository
 import com.lexumi.app.data.datastore.UserPreferences
 import com.lexumi.app.domain.repository.LanguageRepository
 import com.lexumi.app.domain.repository.ProfileRepository
@@ -14,6 +15,7 @@ import javax.inject.Inject
 
 sealed class SplashDestination {
     data object Loading : SplashDestination()
+    data object SignIn : SplashDestination()        // no Supabase session yet -> Google sign-in
     data object Welcome : SplashDestination()       // no profile yet -> create one
     data object LanguageMenu : SplashDestination()  // profile exists, no language chosen yet
     data class Home(val languageId: Long) : SplashDestination() // returning user
@@ -24,6 +26,7 @@ class SplashViewModel @Inject constructor(
     private val prefs: UserPreferences,
     private val profileRepository: ProfileRepository,
     private val languageRepository: LanguageRepository,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _progress = MutableStateFlow(0f)
@@ -38,6 +41,11 @@ class SplashViewModel @Inject constructor(
             for (i in 1..20) {
                 _progress.value = i / 20f
                 kotlinx.coroutines.delay(40)
+            }
+
+            if (!authRepository.isSignedIn()) {
+                _destination.value = SplashDestination.SignIn
+                return@launch
             }
 
             val storedProfileId = prefs.currentProfileId.first()

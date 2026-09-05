@@ -9,6 +9,12 @@ interface TopicDao {
     @Query("SELECT * FROM topics WHERE sectionId = :sectionId ORDER BY position ASC, id ASC")
     fun observeForSection(sectionId: Long): Flow<List<TopicEntity>>
 
+    @Query("SELECT * FROM topics WHERE sectionId = :sectionId ORDER BY position ASC, id ASC")
+    suspend fun getForSection(sectionId: Long): List<TopicEntity>
+
+    @Query("UPDATE topics SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
+
     @Query("SELECT * FROM topics WHERE id = :id")
     suspend fun getById(id: Long): TopicEntity?
 

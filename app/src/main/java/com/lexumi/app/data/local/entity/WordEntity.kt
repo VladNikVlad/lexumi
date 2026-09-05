@@ -44,4 +44,5 @@ data class WordEntity(
     val totalCorrect: Int = 0,
     val bestStreak: Int = 0,
     val currentStatsStreak: Int = 0,
+    val remoteId: String? = null, // Supabase uuid, once published (admin) — personal words never get one
 )

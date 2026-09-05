@@ -605,8 +605,12 @@ private fun EditWordDialog(
     onSave: (String, String, String?, Long?) -> Unit,
 ) {
     val context = LocalContext.current
+    // If the word already has a "/"-separated second variant, split it back into the two
+    // fields so editing shows what's actually there instead of one long raw string.
+    val initialParts = remember(initialTranslation) { initialTranslation.split("/", limit = 2).map { it.trim() } }
     var term by remember { mutableStateOf(initialTerm) }
-    var translation by remember { mutableStateOf(initialTranslation) }
+    var translation by remember { mutableStateOf(initialParts.getOrElse(0) { "" }) }
+    var translationExtra by remember { mutableStateOf(initialParts.getOrElse(1) { "" }) }
     var imagePath by remember { mutableStateOf(initialImagePath) }
     var ruleId by remember { mutableStateOf(initialRuleId) }
     var ruleMenuExpanded by remember { mutableStateOf(false) }
@@ -650,6 +654,12 @@ private fun EditWordDialog(
                 LexumiTextField(value = term, onValueChange = { term = it; onClearError() }, label = "Слово")
                 Spacer(Modifier.height(8.dp))
                 LexumiTextField(value = translation, onValueChange = { translation = it; onClearError() }, label = "Переклад")
+                Spacer(Modifier.height(8.dp))
+                LexumiTextField(
+                    value = translationExtra,
+                    onValueChange = { translationExtra = it; onClearError() },
+                    label = "Ще один варіант перекладу (необов'язково)",
+                )
                 if (rules.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     ExposedDropdownMenuBox(expanded = ruleMenuExpanded, onExpandedChange = { ruleMenuExpanded = it }) {
@@ -670,7 +680,10 @@ private fun EditWordDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(term, translation, imagePath, ruleId) }) { Text("Зберегти") }
+            TextButton(onClick = {
+                val combinedTranslation = if (translationExtra.isBlank()) translation else "$translation / $translationExtra"
+                onSave(term, combinedTranslation, imagePath, ruleId)
+            }) { Text("Зберегти") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Скасувати") } },
     )

@@ -2,11 +2,11 @@ package com.lexumi.app.domain.model
 
 data class UserProfile(val id: Long, val displayName: String)
 
-data class Language(val id: Long, val profileId: Long, val name: String, val voiceName: String? = null)
+data class Language(val id: Long, val profileId: Long, val name: String, val voiceName: String? = null, val remoteId: String? = null)
 
-data class Section(val id: Long, val languageId: Long, val name: String, val position: Int)
+data class Section(val id: Long, val languageId: Long, val name: String, val position: Int, val remoteId: String? = null)
 
-data class Topic(val id: Long, val sectionId: Long, val name: String, val position: Int)
+data class Topic(val id: Long, val sectionId: Long, val name: String, val position: Int, val remoteId: String? = null)
 
 data class Rule(val id: Long, val languageId: Long, val name: String, val text: String, val imagePath: String? = null)
 
@@ -32,6 +32,7 @@ data class Word(
     val totalCorrect: Int = 0,
     val bestStreak: Int = 0,
     val currentStatsStreak: Int = 0,
+    val remoteId: String? = null,
 )
 
 data class ImageContent(

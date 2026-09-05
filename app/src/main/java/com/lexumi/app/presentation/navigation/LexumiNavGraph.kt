@@ -22,6 +22,7 @@ import com.lexumi.app.presentation.section.AddSectionScreen
 import com.lexumi.app.presentation.section.SectionsScreen
 import com.lexumi.app.presentation.sentences.SentencePracticeScreen
 import com.lexumi.app.presentation.settings.SettingsScreen
+import com.lexumi.app.presentation.signin.SignInScreen
 import com.lexumi.app.presentation.splash.SplashScreen
 import com.lexumi.app.presentation.stats.SectionStatsScreen
 import com.lexumi.app.presentation.stats.TopicStatsScreen
@@ -51,6 +52,19 @@ fun LexumiNavGraph() {
                 },
                 onNavigateHome = { languageId ->
                     navController.navigate(Screen.Home.build(languageId)) { popUpTo(Screen.Splash.route) { inclusive = true } }
+                },
+                onNavigateSignIn = {
+                    navController.navigate(Screen.SignIn.route) { popUpTo(Screen.Splash.route) { inclusive = true } }
+                },
+            )
+        }
+
+        composable(Screen.SignIn.route) {
+            SignInScreen(
+                onSignedIn = {
+                    // Re-run the splash decision now that there's a session — it'll route to
+                    // Welcome / LanguageMenu / Home correctly instead of duplicating that logic here.
+                    navController.navigate(Screen.Splash.route) { popUpTo(Screen.SignIn.route) { inclusive = true } }
                 },
             )
         }
@@ -243,7 +257,7 @@ fun LexumiNavGraph() {
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onBack = back,
-                onLoggedOut = { navController.navigate(Screen.Welcome.route) { popUpTo(0) } },
+                onLoggedOut = { navController.navigate(Screen.SignIn.route) { popUpTo(0) } },
                 onDataCleared = { navController.navigate(Screen.Welcome.route) { popUpTo(0) } },
             )
         }

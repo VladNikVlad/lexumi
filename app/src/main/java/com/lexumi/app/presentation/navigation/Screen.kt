@@ -120,4 +120,5 @@ sealed class Screen(val route: String) {
     // Settings / profile (icon in the top corner, point 2 + settings extras)
     data object Settings : Screen("settings")
     data object Welcome : Screen("welcome") // first-run profile creation
+    data object SignIn : Screen("sign_in") // Google sign-in gate, before Welcome/LanguageMenu/Home
 }
