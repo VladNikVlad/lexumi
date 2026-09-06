@@ -28,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -63,6 +65,16 @@ fun LanguageMenuScreen(
     var languagePendingPublish by remember { mutableStateOf<Language?>(null) }
 
     LaunchedEffect(selected) { selected?.let { onLanguageChosen(it) } }
+
+    // Publishing is many sequential network requests and can take a while — if the screen
+    // turns off mid-publish, Android can suspend the process and the in-flight request fails.
+    // Keep the screen awake for the duration so a long publish doesn't get interrupted.
+    val view = LocalView.current
+    DisposableEffect(uiState.busy) {
+        val window = (view.context as? android.app.Activity)?.window
+        if (uiState.busy) window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
 
     GradientBackground {
         SettingsIconButton(onClick = onSettings, modifier = Modifier.align(Alignment.TopEnd).padding(20.dp))

@@ -296,10 +296,52 @@ class ContentSyncRepository @Inject constructor(
             supabase.from(table).insert(row) { select(Columns.list("id")) }.decodeSingle<InsertedId>().id
         }
 
+    /** Inserts every row in [rows] in ONE request (Postgrest's bulk-insert endpoint) instead of
+     * one round trip each — the ids come back in the same order as [rows] (a multi-row
+     * `INSERT ... VALUES ... RETURNING` preserves input order in Postgres). */
+    private suspend inline fun <reified T : Any> batchInsertRemote(table: String, rows: List<T>): List<String> =
+        if (rows.isEmpty()) emptyList()
+        else supabase.from(table).insert(rows) { select(Columns.list("id")) }.decodeList<InsertedId>().map { it.id }
+
+    /** Publishes every item in [items]: already-published ones (non-null [remoteId]) are updated
+     * one at a time — a re-publish/edit, comparatively rare — while brand-new ones are inserted
+     * together in a single batched request via [batchInsertRemote]. That second case is the
+     * common one for a first-time publish, where doing it one row at a time would otherwise mean
+     * hundreds of sequential round trips for what's normally a small amount of actual data.
+     * Returns each item's local id mapped to its resulting remote id. */
+    private suspend inline fun <T, reified R : Any> publishAll(
+        table: String,
+        items: List<T>,
+        localId: (T) -> Long,
+        remoteId: (T) -> String?,
+        setRemoteId: suspend (Long, String) -> Unit,
+        buildRow: (T) -> R,
+    ): Map<Long, String> {
+        val result = mutableMapOf<Long, String>()
+        val (published, fresh) = items.partition { remoteId(it) != null }
+        for (item in published) {
+            val id = upsertRemote(table, remoteId(item), buildRow(item))
+            setRemoteId(localId(item), id)
+            result[localId(item)] = id
+        }
+        if (fresh.isNotEmpty()) {
+            val ids = batchInsertRemote(table, fresh.map(buildRow))
+            fresh.zip(ids).forEach { (item, id) -> setRemoteId(localId(item), id); result[localId(item)] = id }
+        }
+        return result
+    }
+
     /** Pushes this language and everything under it up to Supabase. Safe to call again later —
      * already-published rows get their remote copy refreshed (not duplicated) rather than
      * skipped, so a later edit or a newly-added image reaches Supabase too. Throws if the
-     * signed-in user isn't an admin (also enforced server-side by Row Level Security either way). */
+     * signed-in user isn't an admin (also enforced server-side by Row Level Security either way).
+     *
+     * Each entity type's [publishAll] call lives in its own small `private suspend fun` below
+     * rather than inline right here — [publishAll] is itself `inline` (needed for `reified` JSON
+     * (de)serialization), and a dozen inlined copies of it back-to-back in one method blew past
+     * the JVM's 64KB bytecode-per-method limit (`MethodTooLargeException`). Splitting each call
+     * site into its own method keeps every individual method's inlined bytecode small, while this
+     * one just makes ordinary (non-inlined) suspend calls to them. */
     suspend fun publishLanguage(languageId: Long): PublishResult {
         val profile = authRepository.getMyProfile()
         check(profile?.isAdmin == true) { "Публікувати може лише адмін" }
@@ -311,50 +353,11 @@ class ContentSyncRepository @Inject constructor(
         )
         languageDao.setRemoteId(language.id, remoteLanguageId)
 
-        // Rules are language-scoped (shared across topics), so they're published once per
-        // language, before the topic loop, and referenced from words/sentences/videos/stories
-        // via this local-id -> remote-id map.
-        val ruleIdMap = mutableMapOf<Long, String>()
-        for (rule in ruleDao.getForLanguage(languageId)) {
-            val remoteRuleId = upsertRemote(
-                "rules", rule.remoteId,
-                RemoteRuleRow(
-                    ownerId = null, languageId = remoteLanguageId, name = rule.name, text = rule.text,
-                    imageData = encodeImageFile(rule.imagePath),
-                ),
-            )
-            ruleDao.setRemoteId(rule.id, remoteRuleId)
-            ruleIdMap[rule.id] = remoteRuleId
-        }
-
-        // Words/sentences are language-scoped too (shared across topics) — published once per
-        // language here, then linked from each topic via a topic_words/topic_sentences row below.
-        val wordIdMap = mutableMapOf<Long, String>()
-        for (word in wordDao.getForLanguage(languageId)) {
-            val remoteWordId = upsertRemote(
-                "words", word.remoteId,
-                RemoteWordRow(
-                    ownerId = null, languageId = remoteLanguageId, term = word.term,
-                    translations = word.translations.joinToString(LIST_SEPARATOR),
-                    ruleId = word.ruleId?.let { ruleIdMap[it] }, imageData = encodeImageFile(word.imagePath),
-                ),
-            )
-            wordDao.setRemoteId(word.id, remoteWordId)
-            wordIdMap[word.id] = remoteWordId
-        }
-        val sentenceIdMap = mutableMapOf<Long, String>()
-        for (sentence in sentenceDao.getForLanguage(languageId)) {
-            val remoteSentenceId = upsertRemote(
-                "sentences", sentence.remoteId,
-                RemoteSentenceRow(
-                    ownerId = null, languageId = remoteLanguageId, text = sentence.text,
-                    translations = sentence.translations.joinToString(LIST_SEPARATOR),
-                    ruleIds = sentence.ruleIds.toRemoteRuleIds(ruleIdMap),
-                ),
-            )
-            sentenceDao.setRemoteId(sentence.id, remoteSentenceId)
-            sentenceIdMap[sentence.id] = remoteSentenceId
-        }
+        // Rules/words/sentences are language-scoped (shared across topics), so they're published
+        // once per language here, then linked from each topic below.
+        val ruleIdMap = publishRules(languageId, remoteLanguageId)
+        val wordIdMap = publishWords(languageId, remoteLanguageId, ruleIdMap)
+        val sentenceIdMap = publishSentences(languageId, remoteLanguageId, ruleIdMap)
 
         val skippedVideoNames = mutableListOf<String>()
 
@@ -372,114 +375,180 @@ class ContentSyncRepository @Inject constructor(
                 )
                 topicDao.setRemoteId(topic.id, remoteTopicId)
 
-                for (link in wordTopicCrossRefDao.getForTopic(topic.id)) {
-                    val remoteWordId = wordIdMap[link.wordId] ?: continue // word publish above should always cover this
-                    val remoteLinkId = upsertRemote(
-                        "topic_words", link.remoteId,
-                        RemoteTopicWordRow(
-                            ownerId = null, topicId = remoteTopicId, wordId = remoteWordId,
-                            translationOverride = link.translationOverride, position = link.position,
-                        ),
-                    )
-                    wordTopicCrossRefDao.setRemoteId(link.id, remoteLinkId)
-                }
-
-                for (link in sentenceTopicCrossRefDao.getForTopic(topic.id)) {
-                    val remoteSentenceId = sentenceIdMap[link.sentenceId] ?: continue
-                    val remoteLinkId = upsertRemote(
-                        "topic_sentences", link.remoteId,
-                        RemoteTopicSentenceRow(
-                            ownerId = null, topicId = remoteTopicId, sentenceId = remoteSentenceId,
-                            translationsOverride = link.translationsOverride?.joinToString(LIST_SEPARATOR), position = link.position,
-                        ),
-                    )
-                    sentenceTopicCrossRefDao.setRemoteId(link.id, remoteLinkId)
-                }
-
-                for (video in videoDao.getForTopic(topic.id)) {
-                    if (video.youtubeUrl == null) {
-                        skippedVideoNames += video.name // local-file video, can't publish without file storage
-                        continue
-                    }
-                    val remoteVideoId = upsertRemote(
-                        "videos", video.remoteId,
-                        RemoteVideoRow(
-                            ownerId = null, topicId = remoteTopicId, name = video.name, youtubeUrl = video.youtubeUrl,
-                            originalText = video.originalText, translationText = video.translationText,
-                            ruleIds = video.ruleIds.toRemoteRuleIds(ruleIdMap),
-                        ),
-                    )
-                    videoDao.setRemoteId(video.id, remoteVideoId)
-
-                    for (question in testQuestionDao.getForOwner(QuestionOwnerType.VIDEO, video.id)) {
-                        val remoteQuestionId = upsertRemote(
-                            "test_questions", question.remoteId,
-                            RemoteTestQuestionRow(
-                                ownerId = null, videoId = remoteVideoId, questionText = question.questionText,
-                                answerType = question.answerType.name, correctBoolean = question.correctBoolean,
-                                acceptableAnswers = question.acceptableAnswers.takeIf { it.isNotEmpty() }?.joinToString(LIST_SEPARATOR),
-                            ),
-                        )
-                        testQuestionDao.setRemoteId(question.id, remoteQuestionId)
-                    }
-                }
-
-                for (story in storyDao.getForTopic(topic.id)) {
-                    val remoteStoryId = upsertRemote(
-                        "stories", story.remoteId,
-                        RemoteStoryRow(
-                            ownerId = null, topicId = remoteTopicId, name = story.name, text = story.text,
-                            translation = story.translation, ruleIds = story.ruleIds.toRemoteRuleIds(ruleIdMap),
-                        ),
-                    )
-                    storyDao.setRemoteId(story.id, remoteStoryId)
-                }
-
-                for (image in imageContentDao.getForTopic(topic.id)) {
-                    val imageData = encodeImageFile(image.imagePath) ?: continue // local file missing, can't publish
-                    val remoteImageId = upsertRemote(
-                        "image_content", image.remoteId,
-                        RemoteImageContentRow(ownerId = null, topicId = remoteTopicId, name = image.name, translation = image.translation, imageData = imageData),
-                    )
-                    imageContentDao.setRemoteId(image.id, remoteImageId)
-                }
-
-                for (dialog in audioDialogDao.getForTopic(topic.id)) {
-                    // Keyed by the LOCAL id (always known upfront) rather than the remote row's id
-                    // (which doesn't exist yet on first publish) — avoids a chicken-and-egg problem.
-                    val storagePath = "dialogs/${dialog.id}.mp3"
-                    val remoteDialogId = upsertRemote(
-                        "audio_dialogs", dialog.remoteId,
-                        RemoteAudioDialogRow(
-                            ownerId = null, topicId = remoteTopicId, name = dialog.name,
-                            translationText = dialog.translationText, ruleIds = dialog.ruleIds.toRemoteRuleIds(ruleIdMap),
-                            audioPath = storagePath,
-                        ),
-                    )
-                    audioDialogDao.setRemoteId(dialog.id, remoteDialogId)
-
-                    val bytes = File(dialog.audioPath).takeIf { it.exists() }?.readBytes()
-                    if (bytes != null) {
-                        val bucket = supabase.storage.from(AUDIO_BUCKET)
-                        if (dialog.remoteId != null) bucket.update(storagePath, bytes) else bucket.upload(storagePath, bytes)
-                    }
-
-                    for (question in testQuestionDao.getForOwner(QuestionOwnerType.AUDIO_DIALOG, dialog.id)) {
-                        val remoteQuestionId = upsertRemote(
-                            "test_questions", question.remoteId,
-                            RemoteTestQuestionRow(
-                                ownerId = null, audioDialogId = remoteDialogId, questionText = question.questionText,
-                                answerType = question.answerType.name, correctBoolean = question.correctBoolean,
-                                acceptableAnswers = question.acceptableAnswers.takeIf { it.isNotEmpty() }?.joinToString(LIST_SEPARATOR),
-                            ),
-                        )
-                        testQuestionDao.setRemoteId(question.id, remoteQuestionId)
-                    }
-                }
+                publishTopicWords(topic.id, remoteTopicId, wordIdMap)
+                publishTopicSentences(topic.id, remoteTopicId, sentenceIdMap)
+                skippedVideoNames += publishVideos(topic.id, remoteTopicId, ruleIdMap)
+                publishStories(topic.id, remoteTopicId, ruleIdMap)
+                publishImages(topic.id, remoteTopicId)
+                publishAudioDialogs(topic.id, remoteTopicId, ruleIdMap)
             }
         }
 
         return PublishResult(skippedVideoNames)
+    }
+
+    private suspend fun publishRules(languageId: Long, remoteLanguageId: String): Map<Long, String> =
+        publishAll(
+            table = "rules", items = ruleDao.getForLanguage(languageId),
+            localId = { it.id }, remoteId = { it.remoteId }, setRemoteId = ruleDao::setRemoteId,
+            buildRow = { rule ->
+                RemoteRuleRow(
+                    ownerId = null, languageId = remoteLanguageId, name = rule.name, text = rule.text,
+                    imageData = encodeImageFile(rule.imagePath),
+                )
+            },
+        )
+
+    private suspend fun publishWords(languageId: Long, remoteLanguageId: String, ruleIdMap: Map<Long, String>): Map<Long, String> =
+        publishAll(
+            table = "words", items = wordDao.getForLanguage(languageId),
+            localId = { it.id }, remoteId = { it.remoteId }, setRemoteId = wordDao::setRemoteId,
+            buildRow = { word ->
+                RemoteWordRow(
+                    ownerId = null, languageId = remoteLanguageId, term = word.term,
+                    translations = word.translations.joinToString(LIST_SEPARATOR),
+                    ruleId = word.ruleId?.let { ruleIdMap[it] }, imageData = encodeImageFile(word.imagePath),
+                )
+            },
+        )
+
+    private suspend fun publishSentences(languageId: Long, remoteLanguageId: String, ruleIdMap: Map<Long, String>): Map<Long, String> =
+        publishAll(
+            table = "sentences", items = sentenceDao.getForLanguage(languageId),
+            localId = { it.id }, remoteId = { it.remoteId }, setRemoteId = sentenceDao::setRemoteId,
+            buildRow = { sentence ->
+                RemoteSentenceRow(
+                    ownerId = null, languageId = remoteLanguageId, text = sentence.text,
+                    translations = sentence.translations.joinToString(LIST_SEPARATOR),
+                    ruleIds = sentence.ruleIds.toRemoteRuleIds(ruleIdMap),
+                )
+            },
+        )
+
+    private suspend fun publishTopicWords(topicId: Long, remoteTopicId: String, wordIdMap: Map<Long, String>) {
+        val links = wordTopicCrossRefDao.getForTopic(topicId).filter { it.wordId in wordIdMap }
+        publishAll(
+            table = "topic_words", items = links,
+            localId = { it.id }, remoteId = { it.remoteId }, setRemoteId = wordTopicCrossRefDao::setRemoteId,
+            buildRow = { link ->
+                RemoteTopicWordRow(
+                    ownerId = null, topicId = remoteTopicId, wordId = wordIdMap.getValue(link.wordId),
+                    translationOverride = link.translationOverride, position = link.position,
+                )
+            },
+        )
+    }
+
+    private suspend fun publishTopicSentences(topicId: Long, remoteTopicId: String, sentenceIdMap: Map<Long, String>) {
+        val links = sentenceTopicCrossRefDao.getForTopic(topicId).filter { it.sentenceId in sentenceIdMap }
+        publishAll(
+            table = "topic_sentences", items = links,
+            localId = { it.id }, remoteId = { it.remoteId }, setRemoteId = sentenceTopicCrossRefDao::setRemoteId,
+            buildRow = { link ->
+                RemoteTopicSentenceRow(
+                    ownerId = null, topicId = remoteTopicId, sentenceId = sentenceIdMap.getValue(link.sentenceId),
+                    translationsOverride = link.translationsOverride?.joinToString(LIST_SEPARATOR), position = link.position,
+                )
+            },
+        )
+    }
+
+    /** Publishes every video with a YouTube link (plus its test questions) and returns the names
+     * of any local-file videos that were skipped instead — can't publish those without file storage. */
+    private suspend fun publishVideos(topicId: Long, remoteTopicId: String, ruleIdMap: Map<Long, String>): List<String> {
+        val allVideos = videoDao.getForTopic(topicId)
+        val publishableVideos = allVideos.filter { it.youtubeUrl != null }
+        val videoIdMap = publishAll(
+            table = "videos", items = publishableVideos,
+            localId = { it.id }, remoteId = { it.remoteId }, setRemoteId = videoDao::setRemoteId,
+            buildRow = { video ->
+                RemoteVideoRow(
+                    ownerId = null, topicId = remoteTopicId, name = video.name, youtubeUrl = video.youtubeUrl!!,
+                    originalText = video.originalText, translationText = video.translationText,
+                    ruleIds = video.ruleIds.toRemoteRuleIds(ruleIdMap),
+                )
+            },
+        )
+        for (video in publishableVideos) {
+            val remoteVideoId = videoIdMap[video.id] ?: continue
+            publishAll(
+                table = "test_questions", items = testQuestionDao.getForOwner(QuestionOwnerType.VIDEO, video.id),
+                localId = { it.id }, remoteId = { it.remoteId }, setRemoteId = testQuestionDao::setRemoteId,
+                buildRow = { question ->
+                    RemoteTestQuestionRow(
+                        ownerId = null, videoId = remoteVideoId, questionText = question.questionText,
+                        answerType = question.answerType.name, correctBoolean = question.correctBoolean,
+                        acceptableAnswers = question.acceptableAnswers.takeIf { it.isNotEmpty() }?.joinToString(LIST_SEPARATOR),
+                    )
+                },
+            )
+        }
+        return allVideos.filter { it.youtubeUrl == null }.map { it.name }
+    }
+
+    private suspend fun publishStories(topicId: Long, remoteTopicId: String, ruleIdMap: Map<Long, String>) {
+        publishAll(
+            table = "stories", items = storyDao.getForTopic(topicId),
+            localId = { it.id }, remoteId = { it.remoteId }, setRemoteId = storyDao::setRemoteId,
+            buildRow = { story ->
+                RemoteStoryRow(
+                    ownerId = null, topicId = remoteTopicId, name = story.name, text = story.text,
+                    translation = story.translation, ruleIds = story.ruleIds.toRemoteRuleIds(ruleIdMap),
+                )
+            },
+        )
+    }
+
+    private suspend fun publishImages(topicId: Long, remoteTopicId: String) {
+        // Pre-encode once per image (not per network call) — items missing their local file are dropped.
+        val publishableImages = imageContentDao.getForTopic(topicId).mapNotNull { image ->
+            encodeImageFile(image.imagePath)?.let { image to it }
+        }
+        publishAll(
+            table = "image_content", items = publishableImages,
+            localId = { it.first.id }, remoteId = { it.first.remoteId },
+            setRemoteId = imageContentDao::setRemoteId,
+            buildRow = { (image, imageData) ->
+                RemoteImageContentRow(ownerId = null, topicId = remoteTopicId, name = image.name, translation = image.translation, imageData = imageData)
+            },
+        )
+    }
+
+    /** Audio files get uploaded to Storage per-dialog as a side effect of publishing their row, so
+     * (unlike the other entity types) this stays a plain per-row loop rather than [publishAll]. */
+    private suspend fun publishAudioDialogs(topicId: Long, remoteTopicId: String, ruleIdMap: Map<Long, String>) {
+        for (dialog in audioDialogDao.getForTopic(topicId)) {
+            // Keyed by the LOCAL id (always known upfront) rather than the remote row's id
+            // (which doesn't exist yet on first publish) — avoids a chicken-and-egg problem.
+            val storagePath = "dialogs/${dialog.id}.mp3"
+            val remoteDialogId = upsertRemote(
+                "audio_dialogs", dialog.remoteId,
+                RemoteAudioDialogRow(
+                    ownerId = null, topicId = remoteTopicId, name = dialog.name,
+                    translationText = dialog.translationText, ruleIds = dialog.ruleIds.toRemoteRuleIds(ruleIdMap),
+                    audioPath = storagePath,
+                ),
+            )
+            audioDialogDao.setRemoteId(dialog.id, remoteDialogId)
+
+            val bytes = File(dialog.audioPath).takeIf { it.exists() }?.readBytes()
+            if (bytes != null) {
+                val bucket = supabase.storage.from(AUDIO_BUCKET)
+                if (dialog.remoteId != null) bucket.update(storagePath, bytes) else bucket.upload(storagePath, bytes)
+            }
+
+            for (question in testQuestionDao.getForOwner(QuestionOwnerType.AUDIO_DIALOG, dialog.id)) {
+                val remoteQuestionId = upsertRemote(
+                    "test_questions", question.remoteId,
+                    RemoteTestQuestionRow(
+                        ownerId = null, audioDialogId = remoteDialogId, questionText = question.questionText,
+                        answerType = question.answerType.name, correctBoolean = question.correctBoolean,
+                        acceptableAnswers = question.acceptableAnswers.takeIf { it.isNotEmpty() }?.joinToString(LIST_SEPARATOR),
+                    ),
+                )
+                testQuestionDao.setRemoteId(question.id, remoteQuestionId)
+            }
+        }
     }
 
     /** Admin-authored languages available on the server that this profile hasn't downloaded yet. */
