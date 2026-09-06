@@ -5,7 +5,14 @@ import { supabaseClient } from './supabase-client.js';
 // rather than returning it, since every call site here just wants to await-and-move-on.
 
 export async function listRows(table, filters = {}, orderBy = null) {
-  let query = supabaseClient.from(table).select('*').match(filters);
+  let query = supabaseClient.from(table).select('*');
+  // Every content table here is admin-authored (owner_id: null), and .match() sends a null
+  // filter value as the literal string "null" (owner_id=eq.null) — Postgres then rejects it
+  // ("invalid input syntax for type uuid") instead of matching NULL rows. .is() is the
+  // supabase-js-documented way to filter on NULL; .eq() is only correct for non-null values.
+  for (const [column, value] of Object.entries(filters)) {
+    query = value === null ? query.is(column, null) : query.eq(column, value);
+  }
   if (orderBy) query = query.order(orderBy, { ascending: true });
   const { data, error } = await query;
   if (error) throw error;
