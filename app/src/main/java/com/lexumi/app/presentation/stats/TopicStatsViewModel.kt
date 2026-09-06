@@ -76,7 +76,7 @@ class TopicStatsViewModel @Inject constructor(
     /** Tapping a mastered (rating 4) word and confirming brings it back to the cards round (rating 2). */
     fun repeatWord(wordId: Long) {
         viewModelScope.launch {
-            val word = wordRepository.getWord(wordId) ?: return@launch
+            val word = wordRepository.getWord(topicId, wordId) ?: return@launch
             if (word.rating == 4) submitWordAnswer.repeatMasteredWord(word)
         }
     }

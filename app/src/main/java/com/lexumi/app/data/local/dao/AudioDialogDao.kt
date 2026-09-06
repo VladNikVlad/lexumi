@@ -9,6 +9,9 @@ interface AudioDialogDao {
     @Query("SELECT * FROM audio_dialogs WHERE topicId = :topicId")
     fun observeForTopic(topicId: Long): Flow<List<AudioDialogEntity>>
 
+    @Query("SELECT * FROM audio_dialogs WHERE topicId = :topicId")
+    suspend fun getForTopic(topicId: Long): List<AudioDialogEntity>
+
     @Query("SELECT * FROM audio_dialogs WHERE id = :id")
     suspend fun getById(id: Long): AudioDialogEntity?
 
@@ -17,6 +20,9 @@ interface AudioDialogDao {
 
     @Insert
     suspend fun insert(dialog: AudioDialogEntity): Long
+
+    @Query("UPDATE audio_dialogs SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
 
     @Delete
     suspend fun delete(dialog: AudioDialogEntity)

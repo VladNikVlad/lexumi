@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 11,
-    "identityHash": "e59809ce40598e4de9b0767b0078910f",
+    "version": 14,
+    "identityHash": "7628c2777b0fa9724bfd96c8ec618299",
     "entities": [
       {
         "tableName": "user_profiles",
@@ -282,7 +282,7 @@
       },
       {
         "tableName": "words",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `topicId` INTEGER NOT NULL, `imagePath` TEXT, `term` TEXT NOT NULL, `translation` TEXT NOT NULL, `ruleId` INTEGER, `rating` INTEGER NOT NULL, `level` INTEGER NOT NULL, `correctStreak` INTEGER NOT NULL, `typedStreak` INTEGER NOT NULL, `typedReverseActive` INTEGER NOT NULL, `voiceStreak` INTEGER NOT NULL, `finalStreak` INTEGER NOT NULL, `score` REAL NOT NULL, `timesSeen` INTEGER NOT NULL, `lastSeenAt` INTEGER, `inReviewList` INTEGER NOT NULL, `addedToReviewAt` INTEGER, `totalCorrect` INTEGER NOT NULL, `bestStreak` INTEGER NOT NULL, `currentStatsStreak` INTEGER NOT NULL, `remoteId` TEXT, FOREIGN KEY(`topicId`) REFERENCES `topics`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `languageId` INTEGER NOT NULL, `imagePath` TEXT, `term` TEXT NOT NULL, `translations` TEXT NOT NULL, `ruleId` INTEGER, `rating` INTEGER NOT NULL, `level` INTEGER NOT NULL, `correctStreak` INTEGER NOT NULL, `typedStreak` INTEGER NOT NULL, `typedReverseActive` INTEGER NOT NULL, `voiceStreak` INTEGER NOT NULL, `finalStreak` INTEGER NOT NULL, `score` REAL NOT NULL, `timesSeen` INTEGER NOT NULL, `lastSeenAt` INTEGER, `inReviewList` INTEGER NOT NULL, `addedToReviewAt` INTEGER, `totalCorrect` INTEGER NOT NULL, `bestStreak` INTEGER NOT NULL, `currentStatsStreak` INTEGER NOT NULL, `remoteId` TEXT, FOREIGN KEY(`languageId`) REFERENCES `languages`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "id",
@@ -291,8 +291,8 @@
             "notNull": true
           },
           {
-            "fieldPath": "topicId",
-            "columnName": "topicId",
+            "fieldPath": "languageId",
+            "columnName": "languageId",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -308,8 +308,8 @@
             "notNull": true
           },
           {
-            "fieldPath": "translation",
-            "columnName": "translation",
+            "fieldPath": "translations",
+            "columnName": "translations",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -420,13 +420,92 @@
         },
         "indices": [
           {
-            "name": "index_words_topicId",
+            "name": "index_words_languageId",
+            "unique": false,
+            "columnNames": [
+              "languageId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_words_languageId` ON `${TABLE_NAME}` (`languageId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "languages",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "languageId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "word_topic_cross_ref",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `topicId` INTEGER NOT NULL, `wordId` INTEGER NOT NULL, `translationOverride` TEXT, `position` INTEGER NOT NULL, `remoteId` TEXT, FOREIGN KEY(`topicId`) REFERENCES `topics`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`wordId`) REFERENCES `words`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "topicId",
+            "columnName": "topicId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wordId",
+            "columnName": "wordId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "translationOverride",
+            "columnName": "translationOverride",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteId",
+            "columnName": "remoteId",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_word_topic_cross_ref_topicId",
             "unique": false,
             "columnNames": [
               "topicId"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_words_topicId` ON `${TABLE_NAME}` (`topicId`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_word_topic_cross_ref_topicId` ON `${TABLE_NAME}` (`topicId`)"
+          },
+          {
+            "name": "index_word_topic_cross_ref_wordId",
+            "unique": false,
+            "columnNames": [
+              "wordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_word_topic_cross_ref_wordId` ON `${TABLE_NAME}` (`wordId`)"
           }
         ],
         "foreignKeys": [
@@ -436,6 +515,17 @@
             "onUpdate": "NO ACTION",
             "columns": [
               "topicId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "words",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "wordId"
             ],
             "referencedColumns": [
               "id"
@@ -741,7 +831,7 @@
       },
       {
         "tableName": "sentences",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `topicId` INTEGER NOT NULL, `text` TEXT NOT NULL, `translations` TEXT NOT NULL, `ruleIds` TEXT NOT NULL, `rating` INTEGER NOT NULL, `directStreak` INTEGER NOT NULL, `reverseStreak` INTEGER NOT NULL, `audioStreak` INTEGER NOT NULL, `voiceStreak` INTEGER NOT NULL, `score` REAL NOT NULL, `timesSeen` INTEGER NOT NULL, `totalCorrect` INTEGER NOT NULL, `bestStreak` INTEGER NOT NULL, `currentStatsStreak` INTEGER NOT NULL, `known` INTEGER NOT NULL, `remoteId` TEXT, FOREIGN KEY(`topicId`) REFERENCES `topics`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `languageId` INTEGER NOT NULL, `text` TEXT NOT NULL, `translations` TEXT NOT NULL, `ruleIds` TEXT NOT NULL, `rating` INTEGER NOT NULL, `directStreak` INTEGER NOT NULL, `reverseStreak` INTEGER NOT NULL, `audioStreak` INTEGER NOT NULL, `voiceStreak` INTEGER NOT NULL, `score` REAL NOT NULL, `timesSeen` INTEGER NOT NULL, `totalCorrect` INTEGER NOT NULL, `bestStreak` INTEGER NOT NULL, `currentStatsStreak` INTEGER NOT NULL, `known` INTEGER NOT NULL, `remoteId` TEXT, FOREIGN KEY(`languageId`) REFERENCES `languages`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "id",
@@ -750,8 +840,8 @@
             "notNull": true
           },
           {
-            "fieldPath": "topicId",
-            "columnName": "topicId",
+            "fieldPath": "languageId",
+            "columnName": "languageId",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -853,13 +943,92 @@
         },
         "indices": [
           {
-            "name": "index_sentences_topicId",
+            "name": "index_sentences_languageId",
+            "unique": false,
+            "columnNames": [
+              "languageId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sentences_languageId` ON `${TABLE_NAME}` (`languageId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "languages",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "languageId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "sentence_topic_cross_ref",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `topicId` INTEGER NOT NULL, `sentenceId` INTEGER NOT NULL, `translationsOverride` TEXT, `position` INTEGER NOT NULL, `remoteId` TEXT, FOREIGN KEY(`topicId`) REFERENCES `topics`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`sentenceId`) REFERENCES `sentences`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "topicId",
+            "columnName": "topicId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sentenceId",
+            "columnName": "sentenceId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "translationsOverride",
+            "columnName": "translationsOverride",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteId",
+            "columnName": "remoteId",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sentence_topic_cross_ref_topicId",
             "unique": false,
             "columnNames": [
               "topicId"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_sentences_topicId` ON `${TABLE_NAME}` (`topicId`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sentence_topic_cross_ref_topicId` ON `${TABLE_NAME}` (`topicId`)"
+          },
+          {
+            "name": "index_sentence_topic_cross_ref_sentenceId",
+            "unique": false,
+            "columnNames": [
+              "sentenceId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sentence_topic_cross_ref_sentenceId` ON `${TABLE_NAME}` (`sentenceId`)"
           }
         ],
         "foreignKeys": [
@@ -869,6 +1038,17 @@
             "onUpdate": "NO ACTION",
             "columns": [
               "topicId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "sentences",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sentenceId"
             ],
             "referencedColumns": [
               "id"
@@ -955,7 +1135,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e59809ce40598e4de9b0767b0078910f')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7628c2777b0fa9724bfd96c8ec618299')"
     ]
   }
 }

@@ -90,12 +90,15 @@ create table public.topics (
     position int not null default 0
 );
 
+-- Мовний рівень (не тема!) — те саме слово, додане у дві різні теми цієї
+-- мови, посилається на один цей рядок (через topic_words нижче), а не
+-- дублюється. Той самий підхід, що і rules.
 create table public.words (
     id uuid primary key default gen_random_uuid(),
     owner_id uuid references profiles(id),
-    topic_id uuid not null references topics(id) on delete cascade,
+    language_id uuid not null references languages(id) on delete cascade,
     term text not null,
-    translation text not null,
+    translations text not null,  -- перший = дефолтний переклад, решта — додаткові прийняті відповіді (той самий unit-separator U+001F)
     image_path text,   -- legacy/unused — local file path never makes sense on the server
     image_data text,   -- base64 image, <=100kb (util/ImageCompressor.kt), embedded directly instead of file storage
     rule_id uuid,      -- soft reference to rules(id) — no FK constraint, same as the local Room entity
@@ -112,8 +115,21 @@ create table public.words (
     current_stats_streak int not null default 0,
     created_at timestamptz not null default now(),
     -- дедублікація: одне й те саме слово (без урахування регістру/пробілів) в межах
-    -- теми й того самого власника не повинно дублюватись
-    unique (topic_id, owner_id, term)
+    -- мови й того самого власника не повинно дублюватись
+    unique (language_id, owner_id, term)
+);
+
+-- Зв'язок тема↔слово — те, що раніше було просто topic_id на words.
+-- translation_override: null = тема показує спільний words.translations[0];
+-- не-null = ця тема форкнула свій переклад, незалежно від інших тем.
+create table public.topic_words (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid references profiles(id),
+    topic_id uuid not null references topics(id) on delete cascade,
+    word_id uuid not null references words(id) on delete cascade,
+    translation_override text,
+    position int not null default 0,
+    unique (topic_id, word_id)
 );
 
 -- Мовний рівень (не тема!) — одне й те саме правило можна прикріпити
@@ -143,14 +159,29 @@ create table public.image_content (
     created_at timestamptz not null default now()
 );
 
+-- Мовний рівень, той самий підхід, що і words — те саме речення в різних
+-- темах цієї мови посилається на один рядок (через topic_sentences).
 create table public.sentences (
     id uuid primary key default gen_random_uuid(),
     owner_id uuid references profiles(id),
-    topic_id uuid not null references topics(id) on delete cascade,
+    language_id uuid not null references languages(id) on delete cascade,
     text text not null,          -- немає окремого "name" — речення й так ідентифікується власним текстом
     translations text not null,  -- декілька перекладів, з'єднаних тим самим unit-separator'ом (U+001F), що і локально
     rule_ids text,               -- comma-separated remote uuid правил, може бути NULL
-    created_at timestamptz not null default now()
+    created_at timestamptz not null default now(),
+    unique (language_id, owner_id, text)
+);
+
+-- Зв'язок тема↔речення — мовний шаблон topic_words, тільки для sentences;
+-- translations_override теж unit-separator (U+001F) joined, як і сам sentences.translations.
+create table public.topic_sentences (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid references profiles(id),
+    topic_id uuid not null references topics(id) on delete cascade,
+    sentence_id uuid not null references sentences(id) on delete cascade,
+    translations_override text,
+    position int not null default 0,
+    unique (topic_id, sentence_id)
 );
 
 -- youtube_url навмисно NOT NULL — відео без YouTube-посилання (локальний файл)
@@ -178,13 +209,14 @@ create table public.stories (
     created_at timestamptz not null default now()
 );
 
--- Лише video_id зараз (питання аудіодіалогів ще не публікуються — самі
--- аудіодіалоги теж чекають на Storage). Колонку audio_dialog_id додамо,
--- коли дійде черга синхронізувати аудіо.
+-- Питання належать АБО відео, АБО аудіодіалогу — рівно одна з двох колонок
+-- заповнена (те саме "полiморфне" ownerType/ownerId, що і в Room-сутності,
+-- тільки як дві nullable FK-колонки замість одної типізованої пари).
 create table public.test_questions (
     id uuid primary key default gen_random_uuid(),
     owner_id uuid references profiles(id),
-    video_id uuid not null references videos(id) on delete cascade,
+    video_id uuid references videos(id) on delete cascade,
+    audio_dialog_id uuid references audio_dialogs(id) on delete cascade,
     question_text text not null,
     answer_type text not null,           -- 'TRUE_FALSE' | 'EXACT_TEXT'
     correct_boolean boolean,
@@ -192,6 +224,33 @@ create table public.test_questions (
     created_at timestamptz not null default now()
 );
 ```
+
+### Аудіодіалоги — Supabase Storage, не просто колонка
+
+Аудіозаписи (на відміну від картинок, обмежених 100kb) можуть важити кілька
+мегабайтів — вбудовувати їх як base64 у звичайну колонку вже непрактично.
+Тому сам файл лежить у **Supabase Storage** (бакет `audio-dialogs`,
+публічний на читання), а Postgres-рядок нижче — лише метадані плюс шлях до
+файлу в бакеті.
+
+```sql
+create table public.audio_dialogs (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid references profiles(id),
+    topic_id uuid not null references topics(id) on delete cascade,
+    name text not null,
+    translation_text text,
+    rule_ids text,
+    audio_path text not null,   -- шлях об'єкта в бакеті "audio-dialogs" (напр. "dialogs/<id>.mp3")
+    created_at timestamptz not null default now()
+);
+```
+
+Бакет створюється вручну через Supabase Dashboard → Storage → New bucket
+(назва `audio-dialogs`, Public bucket: увімкнено) — рядок `insert into
+storage.buckets` теж спрацював би, але Dashboard надійніший для цього
+одноразового кроку. Політики доступу для самого бакета — окремо, у розділі
+RLS нижче (`storage.objects`, а не звичайна таблиця).
 
 ### RLS-правила (шаблон, однаковий для кожної таблиці контенту)
 
@@ -213,8 +272,22 @@ create policy "admin writes global" on public.words
 ```
 
 Те саме (3 політики: read own-or-global / write own / admin writes global)
-повторюється для `languages`, `sections`, `topics`, `sentences`, `rules`,
-`image_content`, `videos`, `audio_dialogs`, `stories`, `test_questions`.
+повторюється для `languages`, `sections`, `topics`, `sentences`,
+`topic_words`, `topic_sentences`, `rules`, `image_content`, `videos`,
+`audio_dialogs`, `stories`, `test_questions`.
+
+### RLS для бакета `audio-dialogs` (окремо — `storage.objects`, не звичайна таблиця)
+
+```sql
+create policy "public read audio-dialogs" on storage.objects
+    for select using (bucket_id = 'audio-dialogs');
+
+create policy "admin writes audio-dialogs" on storage.objects
+    for insert with check (bucket_id = 'audio-dialogs' and public.is_admin());
+
+create policy "admin updates audio-dialogs" on storage.objects
+    for update using (bucket_id = 'audio-dialogs' and public.is_admin());
+```
 
 ## Підписки (преміум)
 

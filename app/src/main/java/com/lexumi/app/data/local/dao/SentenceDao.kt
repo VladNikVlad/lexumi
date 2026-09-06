@@ -6,14 +6,23 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SentenceDao {
-    @Query("SELECT * FROM sentences WHERE topicId = :topicId")
-    fun observeForTopic(topicId: Long): Flow<List<SentenceEntity>>
+    @Query("SELECT * FROM sentences WHERE languageId = :languageId")
+    suspend fun getForLanguage(languageId: Long): List<SentenceEntity>
 
-    @Query("SELECT * FROM sentences WHERE topicId = :topicId")
-    suspend fun getForTopic(topicId: Long): List<SentenceEntity>
+    @Query("SELECT * FROM sentences WHERE id IN (:ids)")
+    fun observeByIds(ids: List<Long>): Flow<List<SentenceEntity>>
 
-    @Query("SELECT COUNT(*) FROM sentences WHERE topicId = :topicId AND lower(text) = lower(:text)")
-    suspend fun countByText(topicId: Long, text: String): Int
+    @Query("SELECT * FROM sentences WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<Long>): List<SentenceEntity>
+
+    @Query("SELECT * FROM sentences WHERE id = :id")
+    suspend fun getById(id: Long): SentenceEntity?
+
+    @Query("SELECT * FROM sentences WHERE languageId = :languageId AND lower(trim(text)) = lower(trim(:text)) LIMIT 1")
+    suspend fun findByLanguageAndText(languageId: Long, text: String): SentenceEntity?
+
+    @Query("SELECT COUNT(*) FROM sentence_topic_cross_ref WHERE sentenceId = :sentenceId")
+    suspend fun countLinks(sentenceId: Long): Int
 
     @Insert
     suspend fun insert(sentence: SentenceEntity): Long
@@ -24,6 +33,6 @@ interface SentenceDao {
     @Update
     suspend fun update(sentence: SentenceEntity)
 
-    @Delete
-    suspend fun delete(sentence: SentenceEntity)
+    @Query("DELETE FROM sentences WHERE id = :id")
+    suspend fun deleteById(id: Long)
 }

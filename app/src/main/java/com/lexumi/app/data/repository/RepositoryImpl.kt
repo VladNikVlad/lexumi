@@ -4,7 +4,10 @@ import com.lexumi.app.data.local.dao.*
 import com.lexumi.app.data.local.entity.*
 import com.lexumi.app.domain.model.*
 import com.lexumi.app.domain.repository.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
@@ -14,11 +17,22 @@ private fun LanguageEntity.toDomain() = Language(id, profileId, name, voiceName,
 private fun SectionEntity.toDomain() = Section(id, languageId, name, position, remoteId)
 private fun TopicEntity.toDomain() = Topic(id, sectionId, name, position, remoteId)
 private fun RuleEntity.toDomain() = Rule(id, languageId, name, text, imagePath, remoteId)
-private fun WordEntity.toDomain() = Word(id, topicId, imagePath, term, translation, ruleId, rating, correctStreak, typedStreak, typedReverseActive, voiceStreak, finalStreak, timesSeen, inReviewList, totalCorrect, bestStreak, currentStatsStreak, remoteId)
+/** No topic context — resolves to the shared default translation (no override). */
+private fun WordEntity.toDomain() = Word(id, languageId, imagePath, translations.firstOrNull().orEmpty(), translations, term, ruleId, rating, correctStreak, typedStreak, typedReverseActive, voiceStreak, finalStreak, timesSeen, inReviewList, totalCorrect, bestStreak, currentStatsStreak, remoteId)
+private fun WordEntity.toDomain(crossRef: WordTopicCrossRefEntity) = Word(
+    id, languageId, imagePath, crossRef.translationOverride ?: translations.firstOrNull().orEmpty(), translations, term, ruleId,
+    rating, correctStreak, typedStreak, typedReverseActive, voiceStreak, finalStreak, timesSeen, inReviewList, totalCorrect,
+    bestStreak, currentStatsStreak, remoteId,
+)
 private fun ImageContentEntity.toDomain() = ImageContent(id, topicId, name, imagePath, translation, remoteId)
 private fun VideoEntity.toDomain() = VideoContent(id, topicId, name, youtubeUrl, localVideoPath, originalText, translationText, ruleIds, remoteId)
-private fun AudioDialogEntity.toDomain() = AudioDialog(id, topicId, name, audioPath, translationText, ruleIds)
-private fun SentenceEntity.toDomain() = Sentence(id, topicId, text, translations, ruleIds, rating, directStreak, reverseStreak, audioStreak, voiceStreak, timesSeen, totalCorrect, bestStreak, currentStatsStreak, known, remoteId)
+private fun AudioDialogEntity.toDomain() = AudioDialog(id, topicId, name, audioPath, translationText, ruleIds, remoteId)
+/** No topic context — resolves to the sentence's own shared translations (no override). */
+private fun SentenceEntity.toDomain() = Sentence(id, languageId, text, translations, ruleIds, rating, directStreak, reverseStreak, audioStreak, voiceStreak, timesSeen, totalCorrect, bestStreak, currentStatsStreak, known, remoteId)
+private fun SentenceEntity.toDomain(crossRef: SentenceTopicCrossRefEntity) = Sentence(
+    id, languageId, text, crossRef.translationsOverride ?: translations, ruleIds, rating, directStreak, reverseStreak,
+    audioStreak, voiceStreak, timesSeen, totalCorrect, bestStreak, currentStatsStreak, known, remoteId,
+)
 private fun StoryEntity.toDomain() = Story(id, topicId, name, text, translation, ruleIds, remoteId)
 private fun TestQuestionEntity.toDomain() = TestQuestion(
     id, questionText,
@@ -86,42 +100,101 @@ class RuleRepositoryImpl @Inject constructor(private val dao: RuleDao) : RuleRep
         dao.insert(RuleEntity(languageId = languageId, name = name, text = text, imagePath = imagePath))
 }
 
-class WordRepositoryImpl @Inject constructor(private val dao: WordDao) : WordRepository {
+@OptIn(ExperimentalCoroutinesApi::class)
+class WordRepositoryImpl @Inject constructor(
+    private val dao: WordDao,
+    private val crossRefDao: WordTopicCrossRefDao,
+    private val topicDao: TopicDao,
+    private val sectionDao: SectionDao,
+) : WordRepository {
+
+    private suspend fun languageIdForTopic(topicId: Long): Long {
+        val topic = checkNotNull(topicDao.getById(topicId)) { "Topic $topicId not found" }
+        return checkNotNull(sectionDao.getById(topic.sectionId)) { "Section ${topic.sectionId} not found" }.languageId
+    }
+
+    private fun resolve(crossRefs: List<WordTopicCrossRefEntity>, words: List<WordEntity>): List<Word> {
+        val byId = words.associateBy { it.id }
+        return crossRefs.sortedBy { it.position }.mapNotNull { cr -> byId[cr.wordId]?.toDomain(cr) }
+    }
+
     override fun observeWords(topicId: Long): Flow<List<Word>> =
-        dao.observeForTopic(topicId).map { list -> list.map { it.toDomain() } }
-    override suspend fun getWords(topicId: Long): List<Word> = dao.getForTopic(topicId).map { it.toDomain() }
-    override suspend fun getWord(id: Long): Word? = dao.getById(id)?.toDomain()
-    override suspend fun exists(topicId: Long, term: String): Boolean = dao.countByTerm(topicId, term) > 0
-    override suspend fun addWord(topicId: Long, imagePath: String?, term: String, translation: String, ruleId: Long?): Long =
-        dao.insert(WordEntity(topicId = topicId, imagePath = imagePath, term = term, translation = translation, ruleId = ruleId))
+        crossRefDao.observeForTopic(topicId).flatMapLatest { crossRefs ->
+            if (crossRefs.isEmpty()) flowOf(emptyList())
+            else dao.observeByIds(crossRefs.map { it.wordId }).map { words -> resolve(crossRefs, words) }
+        }
+
+    override suspend fun getWords(topicId: Long): List<Word> {
+        val crossRefs = crossRefDao.getForTopic(topicId)
+        if (crossRefs.isEmpty()) return emptyList()
+        return resolve(crossRefs, dao.getByIds(crossRefs.map { it.wordId }))
+    }
+
+    override suspend fun getWordsForLanguage(languageId: Long): List<Word> = dao.getForLanguage(languageId).map { it.toDomain() }
+
+    override suspend fun getWord(topicId: Long, id: Long): Word? {
+        val entity = dao.getById(id) ?: return null
+        val crossRef = crossRefDao.getLink(topicId, id)
+        return if (crossRef != null) entity.toDomain(crossRef) else entity.toDomain()
+    }
+
+    override suspend fun findByLanguageAndTerm(languageId: Long, term: String): Word? = dao.findByLanguageAndTerm(languageId, term)?.toDomain()
+
+    override suspend fun exists(topicId: Long, term: String): Boolean {
+        val languageId = languageIdForTopic(topicId)
+        val word = dao.findByLanguageAndTerm(languageId, term) ?: return false
+        return crossRefDao.getLink(topicId, word.id) != null
+    }
+
+    override suspend fun addWord(topicId: Long, imagePath: String?, term: String, translation: String, ruleId: Long?): Long {
+        val languageId = languageIdForTopic(topicId)
+        val existing = dao.findByLanguageAndTerm(languageId, term)
+        val wordId = existing?.id ?: dao.insert(
+            WordEntity(languageId = languageId, imagePath = imagePath, term = term.trim(), translations = listOf(translation), ruleId = ruleId),
+        )
+        val override = if (existing != null && !existing.translations.firstOrNull().orEmpty().equals(translation, ignoreCase = true)) translation else null
+        val position = crossRefDao.countForTopic(topicId)
+        crossRefDao.insert(WordTopicCrossRefEntity(topicId = topicId, wordId = wordId, translationOverride = override, position = position))
+        return wordId
+    }
+
+    /** Progress-only — reads the current row and overwrites only rating/streak/review fields, so a
+     * topic-resolved `word.translation` can never leak into the shared `translations` list. */
     override suspend fun updateWord(word: Word) {
+        val current = dao.getById(word.id) ?: return
         dao.update(
-            WordEntity(
-                id = word.id, topicId = word.topicId, imagePath = word.imagePath, term = word.term,
-                translation = word.translation, ruleId = word.ruleId, rating = word.rating,
-                correctStreak = word.correctStreak, typedStreak = word.typedStreak,
-                typedReverseActive = word.typedReverseActive, voiceStreak = word.voiceStreak,
-                finalStreak = word.finalStreak, timesSeen = word.timesSeen,
-                lastSeenAt = System.currentTimeMillis(), inReviewList = word.inReviewList,
+            current.copy(
+                rating = word.rating, correctStreak = word.correctStreak, typedStreak = word.typedStreak,
+                typedReverseActive = word.typedReverseActive, voiceStreak = word.voiceStreak, finalStreak = word.finalStreak,
+                timesSeen = word.timesSeen, lastSeenAt = System.currentTimeMillis(), inReviewList = word.inReviewList,
                 addedToReviewAt = if (word.inReviewList) System.currentTimeMillis() else null,
                 totalCorrect = word.totalCorrect, bestStreak = word.bestStreak, currentStatsStreak = word.currentStatsStreak,
-                remoteId = word.remoteId,
             )
         )
     }
+
+    override suspend fun editWord(topicId: Long, wordId: Long, term: String, translation: String, imagePath: String?, ruleId: Long?) {
+        val current = dao.getById(wordId) ?: return
+        val link = crossRefDao.getLink(topicId, wordId)
+        if (link?.translationOverride != null) {
+            crossRefDao.update(link.copy(translationOverride = translation))
+            dao.update(current.copy(term = term, imagePath = imagePath, ruleId = ruleId))
+        } else {
+            val newTranslations = listOf(translation) + current.translations.drop(1)
+            dao.update(current.copy(term = term, imagePath = imagePath, ruleId = ruleId, translations = newTranslations))
+        }
+    }
+
+    override suspend fun forkTranslation(topicId: Long, wordId: Long, translation: String) {
+        val link = crossRefDao.getLink(topicId, wordId) ?: return
+        crossRefDao.update(link.copy(translationOverride = translation))
+    }
+
     override fun observeReviewList(): Flow<List<Word>> = dao.observeReviewList().map { list -> list.map { it.toDomain() } }
-    override suspend fun deleteWord(word: Word) {
-        dao.delete(
-            WordEntity(
-                id = word.id, topicId = word.topicId, imagePath = word.imagePath, term = word.term,
-                translation = word.translation, ruleId = word.ruleId, rating = word.rating,
-                correctStreak = word.correctStreak, typedStreak = word.typedStreak,
-                typedReverseActive = word.typedReverseActive, voiceStreak = word.voiceStreak,
-                finalStreak = word.finalStreak, timesSeen = word.timesSeen,
-                inReviewList = word.inReviewList,
-                totalCorrect = word.totalCorrect, bestStreak = word.bestStreak, currentStatsStreak = word.currentStatsStreak,
-            )
-        )
+
+    override suspend fun deleteWord(word: Word, topicId: Long) {
+        crossRefDao.deleteLink(topicId, word.id)
+        if (dao.countLinks(word.id) == 0) dao.deleteById(word.id)
     }
 }
 
@@ -193,36 +266,94 @@ class AudioDialogRepositoryImpl @Inject constructor(
         questionDao.getForOwner(QuestionOwnerType.AUDIO_DIALOG, dialogId).map { it.toDomain() }
 }
 
-class SentenceRepositoryImpl @Inject constructor(private val dao: SentenceDao) : SentenceRepository {
+@OptIn(ExperimentalCoroutinesApi::class)
+class SentenceRepositoryImpl @Inject constructor(
+    private val dao: SentenceDao,
+    private val crossRefDao: SentenceTopicCrossRefDao,
+    private val topicDao: TopicDao,
+    private val sectionDao: SectionDao,
+) : SentenceRepository {
+
+    private suspend fun languageIdForTopic(topicId: Long): Long {
+        val topic = checkNotNull(topicDao.getById(topicId)) { "Topic $topicId not found" }
+        return checkNotNull(sectionDao.getById(topic.sectionId)) { "Section ${topic.sectionId} not found" }.languageId
+    }
+
+    private fun resolve(crossRefs: List<SentenceTopicCrossRefEntity>, sentences: List<SentenceEntity>): List<Sentence> {
+        val byId = sentences.associateBy { it.id }
+        return crossRefs.sortedBy { it.position }.mapNotNull { cr -> byId[cr.sentenceId]?.toDomain(cr) }
+    }
+
     override fun observeSentences(topicId: Long): Flow<List<Sentence>> =
-        dao.observeForTopic(topicId).map { list -> list.map { it.toDomain() } }
-    override suspend fun getSentences(topicId: Long): List<Sentence> = dao.getForTopic(topicId).map { it.toDomain() }
-    override suspend fun exists(topicId: Long, text: String): Boolean = dao.countByText(topicId, text) > 0
-    override suspend fun addSentence(topicId: Long, text: String, translations: List<String>, ruleIds: List<Long>): Long =
-        dao.insert(SentenceEntity(topicId = topicId, text = text, translations = translations, ruleIds = ruleIds))
+        crossRefDao.observeForTopic(topicId).flatMapLatest { crossRefs ->
+            if (crossRefs.isEmpty()) flowOf(emptyList())
+            else dao.observeByIds(crossRefs.map { it.sentenceId }).map { sentences -> resolve(crossRefs, sentences) }
+        }
+
+    override suspend fun getSentences(topicId: Long): List<Sentence> {
+        val crossRefs = crossRefDao.getForTopic(topicId)
+        if (crossRefs.isEmpty()) return emptyList()
+        return resolve(crossRefs, dao.getByIds(crossRefs.map { it.sentenceId }))
+    }
+
+    override suspend fun getSentence(topicId: Long, id: Long): Sentence? {
+        val entity = dao.getById(id) ?: return null
+        val crossRef = crossRefDao.getLink(topicId, id)
+        return if (crossRef != null) entity.toDomain(crossRef) else entity.toDomain()
+    }
+
+    override suspend fun findByLanguageAndText(languageId: Long, text: String): Sentence? = dao.findByLanguageAndText(languageId, text)?.toDomain()
+
+    override suspend fun exists(topicId: Long, text: String): Boolean {
+        val languageId = languageIdForTopic(topicId)
+        val sentence = dao.findByLanguageAndText(languageId, text) ?: return false
+        return crossRefDao.getLink(topicId, sentence.id) != null
+    }
+
+    override suspend fun addSentence(topicId: Long, text: String, translations: List<String>, ruleIds: List<Long>): Long {
+        val languageId = languageIdForTopic(topicId)
+        val existing = dao.findByLanguageAndText(languageId, text)
+        val sentenceId = existing?.id ?: dao.insert(
+            SentenceEntity(languageId = languageId, text = text, translations = translations, ruleIds = ruleIds),
+        )
+        val override = if (existing != null && existing.translations != translations) translations else null
+        val position = crossRefDao.countForTopic(topicId)
+        crossRefDao.insert(SentenceTopicCrossRefEntity(topicId = topicId, sentenceId = sentenceId, translationsOverride = override, position = position))
+        return sentenceId
+    }
+
+    /** Progress-only — see [WordRepositoryImpl.updateWord]. */
     override suspend fun updateStats(sentence: Sentence) {
+        val current = dao.getById(sentence.id) ?: return
         dao.update(
-            SentenceEntity(
-                id = sentence.id, topicId = sentence.topicId, text = sentence.text,
-                translations = sentence.translations, ruleIds = sentence.ruleIds, rating = sentence.rating,
-                directStreak = sentence.directStreak, reverseStreak = sentence.reverseStreak,
-                audioStreak = sentence.audioStreak, voiceStreak = sentence.voiceStreak,
-                timesSeen = sentence.timesSeen, totalCorrect = sentence.totalCorrect,
-                bestStreak = sentence.bestStreak, currentStatsStreak = sentence.currentStatsStreak,
-                known = sentence.known, remoteId = sentence.remoteId,
+            current.copy(
+                rating = sentence.rating, directStreak = sentence.directStreak, reverseStreak = sentence.reverseStreak,
+                audioStreak = sentence.audioStreak, voiceStreak = sentence.voiceStreak, timesSeen = sentence.timesSeen,
+                totalCorrect = sentence.totalCorrect, bestStreak = sentence.bestStreak,
+                currentStatsStreak = sentence.currentStatsStreak, known = sentence.known,
             )
         )
     }
-    override suspend fun deleteSentence(sentence: Sentence) {
-        dao.delete(
-            SentenceEntity(
-                id = sentence.id, topicId = sentence.topicId, text = sentence.text,
-                translations = sentence.translations, ruleIds = sentence.ruleIds,
-                timesSeen = sentence.timesSeen, totalCorrect = sentence.totalCorrect,
-                bestStreak = sentence.bestStreak, currentStatsStreak = sentence.currentStatsStreak,
-                known = sentence.known, remoteId = sentence.remoteId,
-            )
-        )
+
+    override suspend fun editSentence(topicId: Long, sentenceId: Long, text: String, translations: List<String>, ruleIds: List<Long>) {
+        val current = dao.getById(sentenceId) ?: return
+        val link = crossRefDao.getLink(topicId, sentenceId)
+        if (link?.translationsOverride != null) {
+            crossRefDao.update(link.copy(translationsOverride = translations))
+            dao.update(current.copy(text = text, ruleIds = ruleIds))
+        } else {
+            dao.update(current.copy(text = text, ruleIds = ruleIds, translations = translations))
+        }
+    }
+
+    override suspend fun forkTranslations(topicId: Long, sentenceId: Long, translations: List<String>) {
+        val link = crossRefDao.getLink(topicId, sentenceId) ?: return
+        crossRefDao.update(link.copy(translationsOverride = translations))
+    }
+
+    override suspend fun deleteSentence(sentence: Sentence, topicId: Long) {
+        crossRefDao.deleteLink(topicId, sentence.id)
+        if (dao.countLinks(sentence.id) == 0) dao.deleteById(sentence.id)
     }
 }
 

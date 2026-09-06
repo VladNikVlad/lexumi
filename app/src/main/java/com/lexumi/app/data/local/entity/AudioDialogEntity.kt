@@ -24,4 +24,5 @@ data class AudioDialogEntity(
     val audioPath: String,
     val translationText: String? = null,
     val ruleIds: List<Long> = emptyList(),
+    val remoteId: String? = null, // Supabase uuid, once published
 )

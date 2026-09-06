@@ -87,6 +87,7 @@ class SentencePracticeViewModel @Inject constructor(
     private val sectionRepository: SectionRepository,
     private val languageRepository: LanguageRepository,
     private val editSentence: EditSentenceUseCase,
+    private val forkSentenceTranslations: com.lexumi.app.domain.usecase.ForkSentenceTranslationUseCase,
     private val deleteSentence: DeleteSentenceUseCase,
     private val getSessionSentences: GetSessionSentencesUseCase,
     private val submitAnswer: SubmitSentenceAnswerUseCase,
@@ -359,7 +360,7 @@ class SentencePracticeViewModel @Inject constructor(
     fun editCurrentSentence(text: String, translations: List<String>, ruleIds: List<Long>) {
         val sentence = _uiState.value.prompt?.sentence ?: return
         viewModelScope.launch {
-            when (editSentence(sentence, text, translations, ruleIds)) {
+            when (editSentence(topicId, sentence, text, translations, ruleIds)) {
                 is AddResult.Success -> {
                     val updated = sentence.copy(text = text.trim(), translations = translations.filter { it.isNotBlank() }, ruleIds = ruleIds)
                     allSentencesById = allSentencesById + (updated.id to updated)
@@ -371,13 +372,31 @@ class SentencePracticeViewModel @Inject constructor(
         }
     }
 
+    /** "Додати локальний переклад" — saves the currently-edited translations as an override just
+     * for this topic, without touching the shared sentence or any other topic. */
+    fun forkCurrentSentenceTranslations(translations: List<String>) {
+        val sentence = _uiState.value.prompt?.sentence ?: return
+        val cleaned = translations.filter { it.isNotBlank() }
+        if (cleaned.isEmpty()) return
+        viewModelScope.launch {
+            forkSentenceTranslations(topicId, sentence, cleaned)
+            refreshCurrentSentence(sentence.id)
+        }
+    }
+
+    private suspend fun refreshCurrentSentence(sentenceId: Long) {
+        val updated = sentenceRepository.getSentence(topicId, sentenceId) ?: return
+        allSentencesById = allSentencesById + (updated.id to updated)
+        _uiState.value = _uiState.value.copy(prompt = buildPrompt(updated), editError = null)
+    }
+
     /** Deletes the sentence currently on screen and moves on to the next one. */
     fun deleteCurrentSentence() {
         val sentence = _uiState.value.prompt?.sentence ?: return
         viewModelScope.launch {
             queue.removeAll { it == sentence.id }
             everWrongIds.remove(sentence.id)
-            deleteSentence(sentence)
+            deleteSentence(sentence, topicId)
             advance()
         }
     }

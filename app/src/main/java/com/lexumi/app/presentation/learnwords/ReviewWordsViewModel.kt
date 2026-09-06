@@ -5,8 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.lexumi.app.domain.model.AnswerCheck
 import com.lexumi.app.domain.model.Word
 import com.lexumi.app.domain.repository.LanguageRepository
-import com.lexumi.app.domain.repository.SectionRepository
-import com.lexumi.app.domain.repository.TopicRepository
 import com.lexumi.app.domain.repository.WordRepository
 import com.lexumi.app.domain.usecase.BuildMultipleChoiceUseCase
 import com.lexumi.app.domain.usecase.SubmitWordAnswerUseCase
@@ -24,8 +22,6 @@ class ReviewWordsViewModel @Inject constructor(
     private val wordRepository: WordRepository,
     private val buildMultipleChoice: BuildMultipleChoiceUseCase,
     private val submitAnswer: SubmitWordAnswerUseCase,
-    private val topicRepository: TopicRepository,
-    private val sectionRepository: SectionRepository,
     private val languageRepository: LanguageRepository,
     private val ttsManager: TtsManager,
     private val soundFeedbackPlayer: SoundFeedbackPlayer,
@@ -107,10 +103,8 @@ class ReviewWordsViewModel @Inject constructor(
     fun speak(text: String) {
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch {
-            val voiceName = voiceCache.getOrPut(prompt.word.topicId) {
-                val topic = topicRepository.getTopic(prompt.word.topicId)
-                val languageId = topic?.let { sectionRepository.getSection(it.sectionId)?.languageId }
-                languageId?.let { languageRepository.getLanguage(it)?.voiceName }
+            val voiceName = voiceCache.getOrPut(prompt.word.languageId) {
+                languageRepository.getLanguage(prompt.word.languageId)?.voiceName
             }
             ttsManager.speak(text, voiceName)
         }

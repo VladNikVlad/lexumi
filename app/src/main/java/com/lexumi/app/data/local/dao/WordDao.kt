@@ -6,11 +6,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WordDao {
-    @Query("SELECT * FROM words WHERE topicId = :topicId")
-    fun observeForTopic(topicId: Long): Flow<List<WordEntity>>
+    @Query("SELECT * FROM words WHERE languageId = :languageId")
+    suspend fun getForLanguage(languageId: Long): List<WordEntity>
 
-    @Query("SELECT * FROM words WHERE topicId = :topicId")
-    suspend fun getForTopic(topicId: Long): List<WordEntity>
+    @Query("SELECT * FROM words WHERE id IN (:ids)")
+    fun observeByIds(ids: List<Long>): Flow<List<WordEntity>>
+
+    @Query("SELECT * FROM words WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<Long>): List<WordEntity>
 
     @Query("UPDATE words SET remoteId = :remoteId WHERE id = :id")
     suspend fun setRemoteId(id: Long, remoteId: String)
@@ -18,11 +21,14 @@ interface WordDao {
     @Query("SELECT * FROM words WHERE id = :id")
     suspend fun getById(id: Long): WordEntity?
 
-    @Query("SELECT COUNT(*) FROM words WHERE topicId = :topicId AND lower(term) = lower(:term)")
-    suspend fun countByTerm(topicId: Long, term: String): Int
+    @Query("SELECT * FROM words WHERE languageId = :languageId AND lower(trim(term)) = lower(trim(:term)) LIMIT 1")
+    suspend fun findByLanguageAndTerm(languageId: Long, term: String): WordEntity?
 
     @Query("SELECT * FROM words WHERE inReviewList = 1 ORDER BY addedToReviewAt ASC")
     fun observeReviewList(): Flow<List<WordEntity>>
+
+    @Query("SELECT COUNT(*) FROM word_topic_cross_ref WHERE wordId = :wordId")
+    suspend fun countLinks(wordId: Long): Int
 
     @Insert
     suspend fun insert(word: WordEntity): Long
@@ -30,6 +36,6 @@ interface WordDao {
     @Update
     suspend fun update(word: WordEntity)
 
-    @Delete
-    suspend fun delete(word: WordEntity)
+    @Query("DELETE FROM words WHERE id = :id")
+    suspend fun deleteById(id: Long)
 }

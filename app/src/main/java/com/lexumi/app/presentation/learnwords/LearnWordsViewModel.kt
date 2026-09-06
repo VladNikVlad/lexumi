@@ -106,6 +106,7 @@ class LearnWordsViewModel @Inject constructor(
     private val buildMultipleChoice: BuildMultipleChoiceUseCase,
     private val submitAnswer: SubmitWordAnswerUseCase,
     private val editWord: com.lexumi.app.domain.usecase.EditWordUseCase,
+    private val forkWordTranslation: com.lexumi.app.domain.usecase.ForkWordTranslationUseCase,
     private val deleteWord: com.lexumi.app.domain.usecase.DeleteWordUseCase,
     private val wordRepository: WordRepository,
     private val topicRepository: TopicRepository,
@@ -193,7 +194,7 @@ class LearnWordsViewModel @Inject constructor(
         // session may have changed its rating, and the prompt should reflect
         // that current state, not a stale snapshot from the start.
         val wordId = queue.removeAt(0)
-        val word = wordRepository.getWord(wordId) ?: run { advance(); return }
+        val word = wordRepository.getWord(topicId, wordId) ?: run { advance(); return }
         val prompt = buildPrompt(word) ?: run { advance(); return } // rating 2/4 shouldn't be in the main queue at all
         _uiState.value = _uiState.value.copy(prompt = prompt, feedback = WordFeedback.None)
     }
@@ -223,7 +224,7 @@ class LearnWordsViewModel @Inject constructor(
     /** This session's share of rating-2 words (part of the shared "words per session" budget —
      * see [GetSessionWordsUseCase]), for the "say it aloud" cards round. */
     private suspend fun enterCardsRound() {
-        val words = if (voiceDisabledThisSession) emptyList() else cardsRoundWordIds.mapNotNull { wordRepository.getWord(it) }
+        val words = if (voiceDisabledThisSession) emptyList() else cardsRoundWordIds.mapNotNull { wordRepository.getWord(topicId, it) }
         if (words.isEmpty()) { advance(); return }
         _uiState.value = _uiState.value.copy(
             prompt = null,
@@ -297,7 +298,7 @@ class LearnWordsViewModel @Inject constructor(
         val state = _uiState.value.voiceMastery ?: return
         val card = state.cards.getOrNull(state.index) ?: return
         viewModelScope.launch {
-            when (editWord(card.word, term, translation, imagePath, ruleId)) {
+            when (editWord(topicId, card.word, term, translation, imagePath, ruleId)) {
                 is com.lexumi.app.domain.usecase.AddResult.Success -> {
                     val updated = card.word.copy(term = term.trim(), translation = translation.trim(), imagePath = imagePath, ruleId = ruleId)
                     val newCards = state.cards.toMutableList().also { it[state.index] = VoiceCard(updated) }
@@ -309,11 +310,30 @@ class LearnWordsViewModel @Inject constructor(
         }
     }
 
+    /** "Додати локальний переклад" for the cards-round word — forks just this topic's
+     * translation away from the shared default, without touching any other topic. */
+    fun forkCurrentVoiceCardWordTranslation(translation: String) {
+        val state = _uiState.value.voiceMastery ?: return
+        val card = state.cards.getOrNull(state.index) ?: return
+        viewModelScope.launch {
+            forkWordTranslation(topicId, card.word, translation)
+            refreshCurrentVoiceCardWord()
+        }
+    }
+
+    private suspend fun refreshCurrentVoiceCardWord() {
+        val state = _uiState.value.voiceMastery ?: return
+        val card = state.cards.getOrNull(state.index) ?: return
+        val updated = wordRepository.getWord(topicId, card.word.id) ?: return
+        val newCards = state.cards.toMutableList().also { it[state.index] = VoiceCard(updated) }
+        _uiState.value = _uiState.value.copy(voiceMastery = state.copy(cards = newCards), editError = null)
+    }
+
     fun deleteCurrentVoiceCardWord() {
         val state = _uiState.value.voiceMastery ?: return
         val card = state.cards.getOrNull(state.index) ?: return
         viewModelScope.launch {
-            deleteWord(card.word)
+            deleteWord(card.word, topicId)
             val newCards = state.cards.toMutableList().also { it.removeAt(state.index) }
             if (newCards.isEmpty()) {
                 advance() // cards round is over — move on to matching pairs
@@ -482,7 +502,7 @@ class LearnWordsViewModel @Inject constructor(
     fun editCurrentWord(term: String, translation: String, imagePath: String?, ruleId: Long?) {
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch {
-            when (val result = editWord(prompt.word, term, translation, imagePath, ruleId)) {
+            when (val result = editWord(topicId, prompt.word, term, translation, imagePath, ruleId)) {
                 is com.lexumi.app.domain.usecase.AddResult.Success -> {
                     val updated = prompt.word.copy(term = term.trim(), translation = translation.trim(), imagePath = imagePath, ruleId = ruleId)
                     _uiState.value = _uiState.value.copy(prompt = buildPrompt(updated) ?: prompt, editError = null)
@@ -493,12 +513,28 @@ class LearnWordsViewModel @Inject constructor(
         }
     }
 
+    /** "Додати локальний переклад" — forks just this topic's translation away from the shared
+     * default, without touching any other topic that also uses this word. */
+    fun forkCurrentWordTranslation(translation: String) {
+        val prompt = _uiState.value.prompt ?: return
+        viewModelScope.launch {
+            forkWordTranslation(topicId, prompt.word, translation)
+            refreshCurrentPromptWord()
+        }
+    }
+
+    private suspend fun refreshCurrentPromptWord() {
+        val prompt = _uiState.value.prompt ?: return
+        val updated = wordRepository.getWord(topicId, prompt.word.id) ?: return
+        _uiState.value = _uiState.value.copy(prompt = buildPrompt(updated) ?: prompt, editError = null)
+    }
+
     fun deleteCurrentWord() {
         val prompt = _uiState.value.prompt ?: return
         viewModelScope.launch {
             queue.removeAll { it == prompt.word.id }
             everWrongIds.remove(prompt.word.id)
-            deleteWord(prompt.word)
+            deleteWord(prompt.word, topicId)
             advance()
         }
     }

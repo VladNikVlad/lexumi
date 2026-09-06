@@ -33,6 +33,8 @@ object DatabaseModule {
     @Provides fun provideTopicDao(db: LexumiDatabase): TopicDao = db.topicDao()
     @Provides fun provideRuleDao(db: LexumiDatabase): RuleDao = db.ruleDao()
     @Provides fun provideWordDao(db: LexumiDatabase): WordDao = db.wordDao()
+    @Provides fun provideWordTopicCrossRefDao(db: LexumiDatabase): WordTopicCrossRefDao = db.wordTopicCrossRefDao()
+    @Provides fun provideSentenceTopicCrossRefDao(db: LexumiDatabase): SentenceTopicCrossRefDao = db.sentenceTopicCrossRefDao()
     @Provides fun provideImageContentDao(db: LexumiDatabase): ImageContentDao = db.imageContentDao()
     @Provides fun provideVideoDao(db: LexumiDatabase): VideoDao = db.videoDao()
     @Provides fun provideAudioDialogDao(db: LexumiDatabase): AudioDialogDao = db.audioDialogDao()

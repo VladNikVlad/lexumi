@@ -10,13 +10,14 @@ const val STREAK_TO_ADVANCE = 5
 
 /**
  * Builds the multiple-choice options for a rating-0 word: the correct
- * translation plus three random distractors from the same topic. Options are
- * cleaned with [TranslationParser] so a field with several "/" variants or a
- * "(...)" explanation still shows as one short, unambiguous button.
+ * translation plus three random distractors from the same language (a word no longer belongs to
+ * just one topic, so the pool is scoped to the whole language instead). Options are cleaned with
+ * [TranslationParser] so a field with several "/" variants or a "(...)" explanation still shows
+ * as one short, unambiguous button.
  */
 class BuildMultipleChoiceUseCase @Inject constructor(private val wordRepository: WordRepository) {
     suspend operator fun invoke(word: Word): List<String> {
-        val pool = wordRepository.getWords(word.topicId).filter { it.id != word.id }
+        val pool = wordRepository.getWordsForLanguage(word.languageId).filter { it.id != word.id }
         val correct = TranslationParser.displayPrimary(word.translation)
         val distractorsSource = pool
             .map { TranslationParser.displayPrimary(it.translation) }

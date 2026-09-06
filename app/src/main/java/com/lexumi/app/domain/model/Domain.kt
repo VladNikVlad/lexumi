@@ -15,10 +15,14 @@ data class MultipleChoiceOption(val text: String, val isCorrect: Boolean)
 
 data class Word(
     val id: Long,
-    val topicId: Long,
+    val languageId: Long,
     val imagePath: String?,
-    val term: String,
+    /** Resolved for the topic this was read for — the topic's own override translation if it has
+     * forked one, otherwise [translations].first(). Use [translations] to see/edit the full shared
+     * list (e.g. for an "add translation for everyone" action). */
     val translation: String,
+    val translations: List<String>,
+    val term: String,
     val ruleId: Long?,
     /** Mastery ladder: 0 = new, 1 = typed both directions, 2 = say-it-aloud cards, 3 = hear-only, 4 = mastered. */
     val rating: Int = 0,
@@ -63,6 +67,7 @@ data class AudioDialog(
     val audioPath: String,
     val translationText: String?,
     val ruleIds: List<Long>,
+    val remoteId: String? = null,
 )
 
 enum class QuestionAnswerType { TRUE_FALSE, EXACT_TEXT }
@@ -78,8 +83,10 @@ data class TestQuestion(
 
 data class Sentence(
     val id: Long,
-    val topicId: Long,
+    val languageId: Long,
     val text: String,
+    /** Resolved for the topic this was read for — the topic's own override list if it has forked
+     * one, otherwise the sentence's own shared list. */
     val translations: List<String>,
     val ruleIds: List<Long>,
     /** Mastery ladder: 0 = target->native typed, 1 = native->target typed, 2 = audio-only, 3 = say-it-aloud, 4 = mastered. */

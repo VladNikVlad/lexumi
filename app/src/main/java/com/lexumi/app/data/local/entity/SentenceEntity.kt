@@ -5,21 +5,25 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+/**
+ * Unique within a language as a whole (not per topic) — the same text added to two topics of the
+ * same language refers to this one row, linked from each topic via [SentenceTopicCrossRefEntity].
+ */
 @Entity(
     tableName = "sentences",
     foreignKeys = [
         ForeignKey(
-            entity = TopicEntity::class,
+            entity = LanguageEntity::class,
             parentColumns = ["id"],
-            childColumns = ["topicId"],
+            childColumns = ["languageId"],
             onDelete = ForeignKey.CASCADE,
         )
     ],
-    indices = [Index("topicId")],
+    indices = [Index("languageId")],
 )
 data class SentenceEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val topicId: Long,
+    val languageId: Long,
     val text: String,
     // first entry is the primary translation, the rest are additional valid ones
     val translations: List<String> = emptyList(),

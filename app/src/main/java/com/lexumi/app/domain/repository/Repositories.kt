@@ -51,11 +51,27 @@ interface RuleRepository {
 interface WordRepository {
     fun observeWords(topicId: Long): Flow<List<Word>>
     suspend fun getWords(topicId: Long): List<Word>
-    suspend fun getWord(id: Long): Word?
+    /** Every word that exists anywhere in this language — regardless of topic. Used for e.g. the
+     * multiple-choice distractor pool, which no longer makes sense scoped to a single topic since
+     * a word doesn't belong to just one. */
+    suspend fun getWordsForLanguage(languageId: Long): List<Word>
+    suspend fun getWord(topicId: Long, id: Long): Word?
+    suspend fun findByLanguageAndTerm(languageId: Long, term: String): Word?
+    /** True if this exact topic already links to a word with this term (not whether the term
+     * exists elsewhere in the language — reusing a term across topics is the whole point). */
     suspend fun exists(topicId: Long, term: String): Boolean
     suspend fun addWord(topicId: Long, imagePath: String?, term: String, translation: String, ruleId: Long?): Long
+    /** Progress-only update (rating/streaks/review-list/etc.) — never touches term/translations/
+     * imagePath/ruleId, so it's safe to call with a `word` whose `translation` is topic-resolved. */
     suspend fun updateWord(word: Word)
-    suspend fun deleteWord(word: Word)
+    /** Saves an edited term/translation/image/rule from within [topicId]'s context. If this topic
+     * already forked its own translation, only that override changes; otherwise the shared
+     * default (`translations[0]`) changes, visible to every topic that hasn't forked. */
+    suspend fun editWord(topicId: Long, wordId: Long, term: String, translation: String, imagePath: String?, ruleId: Long?)
+    /** Forks this topic's translation away from the shared default, without touching it or any
+     * other topic ("Додати локальний переклад"). */
+    suspend fun forkTranslation(topicId: Long, wordId: Long, translation: String)
+    suspend fun deleteWord(word: Word, topicId: Long)
     fun observeReviewList(): Flow<List<Word>>
 }
 
@@ -90,10 +106,19 @@ interface AudioDialogRepository {
 interface SentenceRepository {
     fun observeSentences(topicId: Long): Flow<List<Sentence>>
     suspend fun getSentences(topicId: Long): List<Sentence>
+    suspend fun getSentence(topicId: Long, id: Long): Sentence?
+    suspend fun findByLanguageAndText(languageId: Long, text: String): Sentence?
+    /** True if this exact topic already links to a sentence with this text (reusing text across
+     * topics is expected — see [WordRepository.exists] for the same reasoning). */
     suspend fun exists(topicId: Long, text: String): Boolean
     suspend fun addSentence(topicId: Long, text: String, translations: List<String>, ruleIds: List<Long>): Long
+    /** Progress-only update — never touches text/translations/ruleIds (see [WordRepository.updateWord]). */
     suspend fun updateStats(sentence: Sentence)
-    suspend fun deleteSentence(sentence: Sentence)
+    /** Saves an edited text/translations/rules from within [topicId]'s context — same
+     * shared-vs-override rule as [WordRepository.editWord]. */
+    suspend fun editSentence(topicId: Long, sentenceId: Long, text: String, translations: List<String>, ruleIds: List<Long>)
+    suspend fun forkTranslations(topicId: Long, sentenceId: Long, translations: List<String>)
+    suspend fun deleteSentence(sentence: Sentence, topicId: Long)
 }
 
 interface StoryRepository {

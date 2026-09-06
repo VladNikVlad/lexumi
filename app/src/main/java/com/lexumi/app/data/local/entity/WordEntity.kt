@@ -5,24 +5,31 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+/**
+ * Unique within a language as a whole (not per topic) — the same term added to two topics of the
+ * same language refers to this one row, linked from each topic via [WordTopicCrossRefEntity].
+ * Mirrors how [RuleEntity] is already language-scoped and shared.
+ */
 @Entity(
     tableName = "words",
     foreignKeys = [
         ForeignKey(
-            entity = TopicEntity::class,
+            entity = LanguageEntity::class,
             parentColumns = ["id"],
-            childColumns = ["topicId"],
+            childColumns = ["languageId"],
             onDelete = ForeignKey.CASCADE,
         )
     ],
-    indices = [Index("topicId")],
+    indices = [Index("languageId")],
 )
 data class WordEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val topicId: Long,
+    val languageId: Long,
     val imagePath: String? = null,
     val term: String,
-    val translation: String,
+    // first entry is the shared default translation, the rest are additional accepted answers —
+    // a topic can still show its own translation instead via WordTopicCrossRefEntity.translationOverride
+    val translations: List<String> = emptyList(),
     val ruleId: Long? = null,
     // --- mastery ladder (rating 0-4), point 22 of the scenario ---
     // 0 = new (multiple choice), 1 = typed both directions, 2 = say-it-aloud cards,

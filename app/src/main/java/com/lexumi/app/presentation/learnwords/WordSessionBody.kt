@@ -76,10 +76,12 @@ fun WordSessionBody(
     onDisableVoiceForSession: (() -> Unit)? = null,
     onEditVoiceCardWord: ((term: String, translation: String, imagePath: String?, ruleId: Long?) -> Unit)? = null,
     onDeleteVoiceCardWord: (() -> Unit)? = null,
+    onForkVoiceCardWordTranslation: ((String) -> Unit)? = null,
     doneLabel: String = "Готово",
     availableRules: List<Rule> = emptyList(),
     onEditWord: ((term: String, translation: String, imagePath: String?, ruleId: Long?) -> Unit)? = null,
     onDeleteWord: (() -> Unit)? = null,
+    onForkWordTranslation: ((String) -> Unit)? = null,
     onClearEditError: () -> Unit = {},
     onSpeak: ((String) -> Unit)? = null,
     onSpeakNative: ((String) -> Unit)? = null,
@@ -251,6 +253,7 @@ fun WordSessionBody(
         val menuWord = state.prompt?.word ?: state.voiceMastery?.let { it.cards.getOrNull(it.index)?.word }
         val onEditCurrentWord = if (state.prompt != null) onEditWord else onEditVoiceCardWord
         val onDeleteCurrentWord = if (state.prompt != null) onDeleteWord else onDeleteVoiceCardWord
+        val onForkCurrentWordTranslation = if (state.prompt != null) onForkWordTranslation else onForkVoiceCardWordTranslation
         if ((onEditCurrentWord != null || onDeleteCurrentWord != null) && menuWord != null) {
             Box(modifier = Modifier.align(Alignment.TopEnd).zIndex(10f).statusBarsPadding().padding(16.dp)) {
                 IconButton(
@@ -294,6 +297,9 @@ fun WordSessionBody(
                 onSave = { term, translation, imagePath, ruleId ->
                     onEditCurrentWord(term, translation, imagePath, ruleId)
                     showEditDialog = false
+                },
+                onForkTranslation = onForkCurrentWordTranslation?.let { fork ->
+                    { translation: String -> fork(translation); showEditDialog = false }
                 },
             )
         }
@@ -603,6 +609,7 @@ private fun EditWordDialog(
     onClearError: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (String, String, String?, Long?) -> Unit,
+    onForkTranslation: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // If the word already has a "/"-separated second variant, split it back into the two
@@ -676,6 +683,18 @@ private fun EditWordDialog(
                             }
                         }
                     }
+                }
+                // Це слово може бути спільним з іншими темами — це форкає переклад
+                // (поля "Переклад"/"Ще один варіант" вище) лише для цієї теми, не чіпаючи
+                // інші теми, що також використовують це слово.
+                if (onForkTranslation != null) {
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(
+                        onClick = {
+                            val combined = if (translationExtra.isBlank()) translation else "$translation / $translationExtra"
+                            if (combined.isNotBlank()) onForkTranslation(combined)
+                        },
+                    ) { Text("Зберегти переклад лише для цієї теми") }
                 }
             }
         },

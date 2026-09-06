@@ -237,6 +237,10 @@ fun SentencePracticeScreen(
                     viewModel.editCurrentSentence(text, translations, ruleIds)
                     showEditDialog = false
                 },
+                onForkTranslations = { translations ->
+                    viewModel.forkCurrentSentenceTranslations(translations)
+                    showEditDialog = false
+                },
             )
         }
 
@@ -321,6 +325,7 @@ private fun EditSentenceDialog(
     onClearError: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (String, List<String>, List<Long>) -> Unit,
+    onForkTranslations: ((List<String>) -> Unit)? = null,
 ) {
     var text by remember { mutableStateOf(initialText) }
     val translations = remember { mutableStateListOf(*initialTranslations.toTypedArray()).apply { if (isEmpty()) add("") } }
@@ -356,6 +361,14 @@ private fun EditSentenceDialog(
                         selectedIds = ruleIds,
                         onToggle = { id -> ruleIds = if (id in ruleIds) ruleIds - id else ruleIds + id },
                     )
+                }
+                // Це речення може бути спільним з іншими темами — це форкає переклади
+                // (з полів вище) лише для цієї теми, не чіпаючи звичайне "Зберегти".
+                if (onForkTranslations != null) {
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(onClick = { onForkTranslations(translations.filter { it.isNotBlank() }) }) {
+                        Text("Зберегти переклад лише для цієї теми")
+                    }
                 }
             }
         },

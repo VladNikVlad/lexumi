@@ -4,21 +4,32 @@ import com.lexumi.app.domain.model.Sentence
 import com.lexumi.app.domain.repository.SentenceRepository
 import javax.inject.Inject
 
-/** Lets the user fix a sentence's text/translations/rules without losing its practice stats. */
+/** Lets the user fix a sentence's text/translations/rules without losing its practice stats. Since
+ * a sentence can be shared across topics, the text/rules change always applies to the shared
+ * sentence; the translations follow the topic-vs-shared rule (see
+ * [com.lexumi.app.data.repository.SentenceRepositoryImpl.editSentence]). */
 class EditSentenceUseCase @Inject constructor(private val repo: SentenceRepository) {
-    suspend operator fun invoke(sentence: Sentence, text: String, translations: List<String>, ruleIds: List<Long>): AddResult {
+    suspend operator fun invoke(topicId: Long, sentence: Sentence, text: String, translations: List<String>, ruleIds: List<Long>): AddResult {
         val trimmedText = text.trim()
         val cleanedTranslations = translations.map { it.trim() }.filter { it.isNotBlank() }
         if (trimmedText.isEmpty() || cleanedTranslations.isEmpty()) return AddResult.Blank
-        val duplicate = repo.getSentences(sentence.topicId).any { it.id != sentence.id && it.text.equals(trimmedText, ignoreCase = true) }
-        if (duplicate) return AddResult.AlreadyExists
-        repo.updateStats(sentence.copy(text = trimmedText, translations = cleanedTranslations, ruleIds = ruleIds))
+        val existing = repo.findByLanguageAndText(sentence.languageId, trimmedText)
+        if (existing != null && existing.id != sentence.id) return AddResult.AlreadyExists
+        repo.editSentence(topicId, sentence.id, trimmedText, cleanedTranslations, ruleIds)
         return AddResult.Success(sentence.id)
     }
 }
 
+/** "Додати локальний переклад" — forks this topic's translations away from the shared default. */
+class ForkSentenceTranslationUseCase @Inject constructor(private val repo: SentenceRepository) {
+    suspend operator fun invoke(topicId: Long, sentence: Sentence, translations: List<String>) {
+        val cleaned = translations.map { it.trim() }.filter { it.isNotBlank() }
+        if (cleaned.isNotEmpty()) repo.forkTranslations(topicId, sentence.id, cleaned)
+    }
+}
+
 class DeleteSentenceUseCase @Inject constructor(private val repo: SentenceRepository) {
-    suspend operator fun invoke(sentence: Sentence) = repo.deleteSentence(sentence)
+    suspend operator fun invoke(sentence: Sentence, topicId: Long) = repo.deleteSentence(sentence, topicId)
 }
 
 /**
