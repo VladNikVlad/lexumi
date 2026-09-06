@@ -25,4 +25,5 @@ data class ImageContentEntity(
     val imagePath: String,
     val translation: String,
     val score: Double = 0.0,
+    val remoteId: String? = null, // Supabase uuid, once published
 )

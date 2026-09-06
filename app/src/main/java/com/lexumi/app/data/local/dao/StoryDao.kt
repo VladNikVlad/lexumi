@@ -9,6 +9,9 @@ interface StoryDao {
     @Query("SELECT * FROM stories WHERE topicId = :topicId")
     fun observeForTopic(topicId: Long): Flow<List<StoryEntity>>
 
+    @Query("SELECT * FROM stories WHERE topicId = :topicId")
+    suspend fun getForTopic(topicId: Long): List<StoryEntity>
+
     @Query("SELECT * FROM stories WHERE id = :id")
     suspend fun getById(id: Long): StoryEntity?
 
@@ -17,6 +20,9 @@ interface StoryDao {
 
     @Insert
     suspend fun insert(story: StoryEntity): Long
+
+    @Query("UPDATE stories SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
 
     @Delete
     suspend fun delete(story: StoryEntity)

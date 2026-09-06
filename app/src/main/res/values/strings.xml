@@ -72,9 +72,13 @@
     <string name="repetitions">Кількість повторень</string>
     <string name="reminders">Нагадування про навчання</string>
     <string name="profile_section">Профіль</string>
-    <string name="switch_user">Змінити користувача / додати новий</string>
     <string name="new_profile_name_hint">Ім\'я нового профілю</string>
     <string name="create_profile">Створити профіль</string>
+    <string name="profile_name_label">Ім\'я профілю</string>
+    <string name="change_learning_language">Змінити мову вивчення</string>
+    <string name="admin_badge_yes">Адміністратор: так</string>
+    <string name="admin_badge_no">Адміністратор: ні</string>
+    <string name="add_new_profile">Створити новий профіль</string>
     <string name="logout">Вийти</string>
     <string name="delete_all_data">Видалити всі дані</string>
     <string name="delete_all_data_confirm">Це видалить усі мови, розділи, теми і слова. Ви впевнені?</string>

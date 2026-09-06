@@ -27,7 +27,6 @@ fun AddSentenceScreen(
     onBack: () -> Unit,
     viewModel: AddSentenceViewModel = hiltViewModel(),
 ) {
-    var name by remember { mutableStateOf("") }
     var text by remember { mutableStateOf("") }
     val translations = remember { mutableStateListOf("") }
     var selectedRuleIds by remember { mutableStateOf(setOf<Long>()) }
@@ -50,8 +49,6 @@ fun AddSentenceScreen(
             Text("Додати речення", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(20.dp))
 
-            LexumiTextField(value = name, onValueChange = { name = it; viewModel.clearError() }, label = "Назва")
-            Spacer(Modifier.height(12.dp))
             LexumiTextField(value = text, onValueChange = { text = it; viewModel.clearError() }, label = "Речення", singleLine = false)
             Spacer(Modifier.height(12.dp))
 
@@ -84,7 +81,7 @@ fun AddSentenceScreen(
             PillActionButton(
                 text = "Додати речення",
                 icon = Icons.Filled.Check,
-                onClick = { viewModel.submit(name, text, translations, selectedRuleIds.toList()) },
+                onClick = { viewModel.submit(text, translations, selectedRuleIds.toList()) },
             )
         }
     }

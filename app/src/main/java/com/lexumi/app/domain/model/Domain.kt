@@ -8,7 +8,7 @@ data class Section(val id: Long, val languageId: Long, val name: String, val pos
 
 data class Topic(val id: Long, val sectionId: Long, val name: String, val position: Int, val remoteId: String? = null)
 
-data class Rule(val id: Long, val languageId: Long, val name: String, val text: String, val imagePath: String? = null)
+data class Rule(val id: Long, val languageId: Long, val name: String, val text: String, val imagePath: String? = null, val remoteId: String? = null)
 
 /** Which of the four answer slots is correct, in multiple-choice (level 0) mode. */
 data class MultipleChoiceOption(val text: String, val isCorrect: Boolean)
@@ -41,6 +41,7 @@ data class ImageContent(
     val name: String,
     val imagePath: String,
     val translation: String,
+    val remoteId: String? = null,
 )
 
 data class VideoContent(
@@ -52,6 +53,7 @@ data class VideoContent(
     val originalText: String?,
     val translationText: String?,
     val ruleIds: List<Long>,
+    val remoteId: String? = null,
 )
 
 data class AudioDialog(
@@ -71,12 +73,12 @@ data class TestQuestion(
     val answerType: QuestionAnswerType,
     val correctBoolean: Boolean?,
     val acceptableAnswers: List<String>,
+    val remoteId: String? = null,
 )
 
 data class Sentence(
     val id: Long,
     val topicId: Long,
-    val name: String,
     val text: String,
     val translations: List<String>,
     val ruleIds: List<Long>,
@@ -91,6 +93,7 @@ data class Sentence(
     val bestStreak: Int = 0,
     val currentStatsStreak: Int = 0,
     val known: Boolean = false,
+    val remoteId: String? = null,
 )
 
 data class Story(
@@ -100,6 +103,7 @@ data class Story(
     val text: String,
     val translation: String?,
     val ruleIds: List<Long>,
+    val remoteId: String? = null,
 )
 
 /** Result of comparing a user's typed answer against the expected word/sentence. */

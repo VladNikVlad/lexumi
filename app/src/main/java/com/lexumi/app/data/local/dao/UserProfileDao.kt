@@ -12,8 +12,14 @@ interface UserProfileDao {
     @Query("SELECT * FROM user_profiles WHERE id = :id")
     suspend fun getById(id: Long): UserProfileEntity?
 
+    @Query("SELECT displayName FROM user_profiles")
+    suspend fun getAllDisplayNames(): List<String>
+
     @Insert
     suspend fun insert(profile: UserProfileEntity): Long
+
+    @Query("UPDATE user_profiles SET displayName = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
 
     @Delete
     suspend fun delete(profile: UserProfileEntity)

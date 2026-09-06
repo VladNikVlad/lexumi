@@ -6,8 +6,8 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface LanguageDao {
-    @Query("SELECT * FROM languages WHERE profileId = :profileId ORDER BY createdAt ASC")
-    fun observeAll(profileId: Long): Flow<List<LanguageEntity>>
+    @Query("SELECT * FROM languages ORDER BY createdAt ASC")
+    fun observeAll(): Flow<List<LanguageEntity>>
 
     @Query("SELECT * FROM languages WHERE id = :id")
     suspend fun getById(id: Long): LanguageEntity?

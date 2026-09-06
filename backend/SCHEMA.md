@@ -55,9 +55,14 @@ $$ language sql stable security definer;
 ## Ієрархія контенту (мови → розділи → теми → слова/речення/...)
 
 Кожна з цих таблиць отримує `owner_id`. Показую повністю на прикладі
-`languages`/`topics`/`words`, решта (`sentences`, `rules`, `image_content`,
-`videos`, `audio_dialogs`, `stories`, `test_questions`) — за тим самим
-шаблоном (як зараз в Room-entity, плюс `owner_id`).
+`languages`/`topics`/`words`, а також `rules`/`sentences`/`videos`/
+`stories`/`test_questions`/`image_content` (реалізовано нижче). Картинки
+слів/правил/карток невеликі (до 100kb, `util/ImageCompressor.kt`), тому
+зберігаються прямо в рядку як base64 (`image_data`) — окреме файлове
+сховище (Supabase Storage) не знадобилось. Єдине, що досі не
+синхронізується — `audio_dialogs`: аудіофайл не обмежений так само
+жорстко за розміром, тож для нього таки потрібне окреме файлове сховище
+(окрема задача, ще не зроблена).
 
 ```sql
 create table public.languages (
@@ -91,8 +96,9 @@ create table public.words (
     topic_id uuid not null references topics(id) on delete cascade,
     term text not null,
     translation text not null,
-    image_path text,
-    rule_id uuid,
+    image_path text,   -- legacy/unused — local file path never makes sense on the server
+    image_data text,   -- base64 image, <=100kb (util/ImageCompressor.kt), embedded directly instead of file storage
+    rule_id uuid,      -- soft reference to rules(id) — no FK constraint, same as the local Room entity
     rating int not null default 0,
     correct_streak int not null default 0,
     typed_streak int not null default 0,
@@ -108,6 +114,82 @@ create table public.words (
     -- дедублікація: одне й те саме слово (без урахування регістру/пробілів) в межах
     -- теми й того самого власника не повинно дублюватись
     unique (topic_id, owner_id, term)
+);
+
+-- Мовний рівень (не тема!) — одне й те саме правило можна прикріпити
+-- до слів/речень/відео/історій з різних тем цієї мови, звідси і
+-- посилання на нього по id, а не копія тексту.
+create table public.rules (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid references profiles(id),
+    language_id uuid not null references languages(id) on delete cascade,
+    name text not null,
+    text text not null,
+    image_path text,  -- legacy/unused
+    image_data text,  -- base64 image, <=100kb, embedded directly instead of file storage
+    created_at timestamptz not null default now()
+);
+
+-- Картки-зображення (point 11 & 21). Завжди мають картинку (<=100kb,
+-- util/ImageCompressor.kt), тому image_data тут NOT NULL, на відміну
+-- від rules/words, де картинка необов'язкова.
+create table public.image_content (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid references profiles(id),
+    topic_id uuid not null references topics(id) on delete cascade,
+    name text not null,
+    translation text not null,
+    image_data text not null,
+    created_at timestamptz not null default now()
+);
+
+create table public.sentences (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid references profiles(id),
+    topic_id uuid not null references topics(id) on delete cascade,
+    text text not null,          -- немає окремого "name" — речення й так ідентифікується власним текстом
+    translations text not null,  -- декілька перекладів, з'єднаних тим самим unit-separator'ом (U+001F), що і локально
+    rule_ids text,               -- comma-separated remote uuid правил, може бути NULL
+    created_at timestamptz not null default now()
+);
+
+-- youtube_url навмисно NOT NULL — відео без YouTube-посилання (локальний файл)
+-- ніколи не публікується (немає файлового сховища).
+create table public.videos (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid references profiles(id),
+    topic_id uuid not null references topics(id) on delete cascade,
+    name text not null,
+    youtube_url text not null,
+    original_text text,
+    translation_text text,
+    rule_ids text,
+    created_at timestamptz not null default now()
+);
+
+create table public.stories (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid references profiles(id),
+    topic_id uuid not null references topics(id) on delete cascade,
+    name text not null,
+    text text not null,
+    translation text,
+    rule_ids text,
+    created_at timestamptz not null default now()
+);
+
+-- Лише video_id зараз (питання аудіодіалогів ще не публікуються — самі
+-- аудіодіалоги теж чекають на Storage). Колонку audio_dialog_id додамо,
+-- коли дійде черга синхронізувати аудіо.
+create table public.test_questions (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid references profiles(id),
+    video_id uuid not null references videos(id) on delete cascade,
+    question_text text not null,
+    answer_type text not null,           -- 'TRUE_FALSE' | 'EXACT_TEXT'
+    correct_boolean boolean,
+    acceptable_answers text,             -- unit-separator (U+001F) joined list, NULL якщо порожньо
+    created_at timestamptz not null default now()
 );
 ```
 
@@ -131,7 +213,7 @@ create policy "admin writes global" on public.words
 ```
 
 Те саме (3 політики: read own-or-global / write own / admin writes global)
-повторюється для `sections`, `topics`, `sentences`, `rules`,
+повторюється для `languages`, `sections`, `topics`, `sentences`, `rules`,
 `image_content`, `videos`, `audio_dialogs`, `stories`, `test_questions`.
 
 ## Підписки (преміум)

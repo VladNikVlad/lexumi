@@ -6,13 +6,17 @@ import kotlinx.coroutines.flow.Flow
 interface ProfileRepository {
     fun observeProfiles(): Flow<List<UserProfile>>
     suspend fun createProfile(name: String): Long
+    suspend fun renameProfile(id: Long, name: String)
     suspend fun deleteProfile(profile: UserProfile)
     suspend fun profileCount(): Int
     suspend fun profileExists(id: Long): Boolean
+    /** "user1", "user2"... — the next unused default name, based on the highest "userN" already taken. */
+    suspend fun nextDefaultProfileName(): String
 }
 
 interface LanguageRepository {
-    fun observeLanguages(profileId: Long): Flow<List<Language>>
+    /** All languages that exist locally on this device, regardless of which profile created them. */
+    fun observeLanguages(): Flow<List<Language>>
     suspend fun getLanguage(id: Long): Language?
     suspend fun exists(profileId: Long, name: String): Boolean
     suspend fun addLanguage(profileId: Long, name: String): Long
@@ -66,7 +70,7 @@ interface VideoRepository {
     suspend fun getVideo(id: Long): VideoContent?
     suspend fun exists(topicId: Long, name: String): Boolean
     suspend fun addVideo(
-        topicId: Long, name: String, youtubeUrl: String?, localVideoPath: String?, originalText: String?,
+        topicId: Long, name: String, youtubeUrl: String?, originalText: String?,
         translationText: String?, ruleIds: List<Long>, questions: List<TestQuestion>,
     ): Long
     suspend fun getQuestions(videoId: Long): List<TestQuestion>
@@ -86,8 +90,8 @@ interface AudioDialogRepository {
 interface SentenceRepository {
     fun observeSentences(topicId: Long): Flow<List<Sentence>>
     suspend fun getSentences(topicId: Long): List<Sentence>
-    suspend fun exists(topicId: Long, name: String): Boolean
-    suspend fun addSentence(topicId: Long, name: String, text: String, translations: List<String>, ruleIds: List<Long>): Long
+    suspend fun exists(topicId: Long, text: String): Boolean
+    suspend fun addSentence(topicId: Long, text: String, translations: List<String>, ruleIds: List<Long>): Long
     suspend fun updateStats(sentence: Sentence)
     suspend fun deleteSentence(sentence: Sentence)
 }

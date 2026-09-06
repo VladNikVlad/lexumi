@@ -9,6 +9,9 @@ interface VideoDao {
     @Query("SELECT * FROM videos WHERE topicId = :topicId")
     fun observeForTopic(topicId: Long): Flow<List<VideoEntity>>
 
+    @Query("SELECT * FROM videos WHERE topicId = :topicId")
+    suspend fun getForTopic(topicId: Long): List<VideoEntity>
+
     @Query("SELECT * FROM videos WHERE id = :id")
     suspend fun getById(id: Long): VideoEntity?
 
@@ -17,6 +20,9 @@ interface VideoDao {
 
     @Insert
     suspend fun insert(video: VideoEntity): Long
+
+    @Query("UPDATE videos SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
 
     @Delete
     suspend fun delete(video: VideoEntity)

@@ -20,9 +20,10 @@ class WelcomeViewModel @Inject constructor(
     val created: StateFlow<Boolean> = _created
 
     fun createProfile(name: String) {
-        val trimmed = name.trim().ifBlank { "Мій профіль" }
+        val trimmed = name.trim()
         viewModelScope.launch {
-            val id = profileRepository.createProfile(trimmed)
+            val finalName = trimmed.ifBlank { profileRepository.nextDefaultProfileName() }
+            val id = profileRepository.createProfile(finalName)
             prefs.setCurrentProfile(id)
             _created.value = true
         }

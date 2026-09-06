@@ -1,14 +1,10 @@
 package com.lexumi.app.presentation.settings
 
-import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lexumi.app.data.auth.AuthRepository
 import com.lexumi.app.data.datastore.UserPreferences
 import com.lexumi.app.data.local.LexumiDatabase
-import com.lexumi.app.domain.model.UserProfile
-import com.lexumi.app.domain.repository.ProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,7 +16,6 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val prefs: UserPreferences,
-    private val profileRepository: ProfileRepository,
     private val database: LexumiDatabase,
     private val authRepository: AuthRepository,
 ) : ViewModel() {
@@ -34,43 +29,15 @@ class SettingsViewModel @Inject constructor(
     val remindersEnabled: StateFlow<Boolean> = prefs.remindersEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
-    val currentProfileId: StateFlow<Long?> = prefs.currentProfileId
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    val profiles: StateFlow<List<UserProfile>> = profileRepository.observeProfiles()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     private val _loggedOut = MutableStateFlow(false)
     val loggedOut: StateFlow<Boolean> = _loggedOut
 
     private val _dataCleared = MutableStateFlow(false)
     val dataCleared: StateFlow<Boolean> = _dataCleared
 
-    /** "Мова застосунку" — switches the UI language app-wide via AndroidX per-app language support. */
-    fun setAppLanguage(languageTag: String) {
-        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(languageTag))
-    }
-
-    fun currentAppLanguageTag(): String {
-        val locales = AppCompatDelegate.getApplicationLocales()
-        return if (locales.isEmpty) "uk" else locales[0]?.language ?: "uk"
-    }
-
     fun setWordsPerSession(count: Int) = viewModelScope.launch { prefs.setWordsPerSession(count) }
     fun setRepetitions(count: Int) = viewModelScope.launch { prefs.setRepetitions(count) }
     fun setRemindersEnabled(enabled: Boolean) = viewModelScope.launch { prefs.setRemindersEnabled(enabled) }
-
-    /** "Змінити користувача" — switches the active local profile without deleting anyone's data. */
-    fun switchToProfile(profileId: Long) = viewModelScope.launch {
-        prefs.clearSelectedLanguage()
-        prefs.clearLastSession()
-        prefs.setCurrentProfile(profileId)
-    }
-
-    fun createAndSwitchToNewProfile(name: String) = viewModelScope.launch {
-        val id = profileRepository.createProfile(name.ifBlank { "Новий профіль" })
-        switchToProfile(id)
-    }
 
     /** "Вийти" — signs out of the Google/Supabase session too, not just the local profile —
      * app returns all the way to the sign-in screen, not just the local profile picker. */

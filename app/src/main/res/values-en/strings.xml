@@ -72,9 +72,13 @@
     <string name="repetitions">Number of repetitions</string>
     <string name="reminders">Study reminders</string>
     <string name="profile_section">Profile</string>
-    <string name="switch_user">Switch user / add new</string>
     <string name="new_profile_name_hint">New profile name</string>
     <string name="create_profile">Create profile</string>
+    <string name="profile_name_label">Profile name</string>
+    <string name="change_learning_language">Change learning language</string>
+    <string name="admin_badge_yes">Administrator: yes</string>
+    <string name="admin_badge_no">Administrator: no</string>
+    <string name="add_new_profile">Create a new profile</string>
     <string name="logout">Log out</string>
     <string name="delete_all_data">Delete all data</string>
     <string name="delete_all_data_confirm">This will delete all languages, sections, topics and words. Are you sure?</string>

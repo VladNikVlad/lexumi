@@ -2,21 +2,16 @@
 
 package com.lexumi.app.presentation.addcontent
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lexumi.app.presentation.components.BackIconButton
@@ -25,7 +20,6 @@ import com.lexumi.app.presentation.components.LexumiLogo
 import com.lexumi.app.presentation.components.LexumiTextField
 import com.lexumi.app.presentation.components.PillActionButton
 import com.lexumi.app.presentation.components.RuleMultiSelect
-import java.io.File
 
 @Composable
 fun AddVideoScreen(
@@ -33,11 +27,8 @@ fun AddVideoScreen(
     onBack: () -> Unit,
     viewModel: AddVideoViewModel = hiltViewModel(),
 ) {
-    val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
-    var localVideoPath by remember { mutableStateOf<String?>(null) }
-    var isCopyingFile by remember { mutableStateOf(false) }
     var originalText by remember { mutableStateOf("") }
     var translationText by remember { mutableStateOf("") }
     var selectedRuleIds by remember { mutableStateOf(setOf<Long>()) }
@@ -48,18 +39,6 @@ fun AddVideoScreen(
     val rules by viewModel.rules.collectAsState()
 
     LaunchedEffect(created) { if (created) onCreated() }
-
-    val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        isCopyingFile = true
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        if (bytes != null) {
-            val file = File(context.filesDir, "video_${System.currentTimeMillis()}.mp4")
-            file.writeBytes(bytes)
-            localVideoPath = file.absolutePath
-        }
-        isCopyingFile = false
-    }
 
     GradientBackground {
         BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
@@ -75,23 +54,9 @@ fun AddVideoScreen(
 
             LexumiTextField(value = name, onValueChange = { name = it; viewModel.clearError() }, label = "Назва")
             Spacer(Modifier.height(12.dp))
-
-            PillActionButton(
-                text = when {
-                    isCopyingFile -> "Завантаження файлу…"
-                    localVideoPath != null -> "Відео вибрано ✓ (натисни, щоб замінити)"
-                    else -> "Вибрати відео з галереї"
-                },
-                icon = Icons.Filled.VideoFile,
-                enabled = !isCopyingFile,
-                onClick = { pickVideo.launch("video/*") },
-            )
-            Spacer(Modifier.height(12.dp))
-            Text("або", style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(12.dp))
             LexumiTextField(
                 value = url, onValueChange = { url = it; viewModel.clearError() },
-                label = "Посилання YouTube (якщо не вибрано файл)",
+                label = "Посилання YouTube",
             )
             Spacer(Modifier.height(12.dp))
             LexumiTextField(value = originalText, onValueChange = { originalText = it }, label = "Текст оригіналу (необов'язково)", singleLine = false)
@@ -129,7 +94,7 @@ fun AddVideoScreen(
                 icon = Icons.Filled.Check,
                 onClick = {
                     viewModel.submit(
-                        name, url.ifBlank { null }, localVideoPath, originalText.ifBlank { null }, translationText.ifBlank { null },
+                        name, url.ifBlank { null }, originalText.ifBlank { null }, translationText.ifBlank { null },
                         selectedRuleIds.toList(), questions.filter { it.isNotBlank() }.map { it to true },
                     )
                 },

@@ -53,12 +53,21 @@ class SplashViewModel @Inject constructor(
             // database reset) while the separate DataStore prefs still point
             // to it — verify it's real before trusting it, or the app would
             // crash trying to insert content under a language that no longer exists.
-            val profileId = storedProfileId?.takeIf { profileRepository.profileExists(it) }
+            var profileId = storedProfileId?.takeIf { profileRepository.profileExists(it) }
             if (storedProfileId != null && profileId == null) {
                 prefs.clearCurrentProfile()
             }
 
-            val hasProfiles = profileRepository.profileCount() > 0
+            val existingProfiles = profileRepository.observeProfiles().first()
+            // Nothing selected, but a local profile already exists (typically after
+            // sign-out + sign-in again) — pick the first one automatically instead of
+            // leaving the language menu empty.
+            if (profileId == null && existingProfiles.isNotEmpty()) {
+                profileId = existingProfiles.first().id
+                prefs.setCurrentProfile(profileId)
+            }
+
+            val hasProfiles = existingProfiles.isNotEmpty()
             _destination.value = when {
                 profileId == null && !hasProfiles -> SplashDestination.Welcome
                 profileId == null -> SplashDestination.LanguageMenu

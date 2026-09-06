@@ -28,4 +28,5 @@ data class RuleEntity(
     val name: String,
     val text: String,
     val imagePath: String? = null,
+    val remoteId: String? = null, // Supabase uuid, once published
 )

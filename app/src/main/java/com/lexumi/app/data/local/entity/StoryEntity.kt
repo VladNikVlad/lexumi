@@ -24,4 +24,5 @@ data class StoryEntity(
     val text: String,
     val translation: String? = null,
     val ruleIds: List<Long> = emptyList(),
+    val remoteId: String? = null, // Supabase uuid, once published
 )

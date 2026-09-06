@@ -12,11 +12,14 @@ interface SentenceDao {
     @Query("SELECT * FROM sentences WHERE topicId = :topicId")
     suspend fun getForTopic(topicId: Long): List<SentenceEntity>
 
-    @Query("SELECT COUNT(*) FROM sentences WHERE topicId = :topicId AND lower(name) = lower(:name)")
-    suspend fun countByName(topicId: Long, name: String): Int
+    @Query("SELECT COUNT(*) FROM sentences WHERE topicId = :topicId AND lower(text) = lower(:text)")
+    suspend fun countByText(topicId: Long, text: String): Int
 
     @Insert
     suspend fun insert(sentence: SentenceEntity): Long
+
+    @Query("UPDATE sentences SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
 
     @Update
     suspend fun update(sentence: SentenceEntity)

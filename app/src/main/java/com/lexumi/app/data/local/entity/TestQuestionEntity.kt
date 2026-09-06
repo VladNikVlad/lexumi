@@ -20,4 +20,5 @@ data class TestQuestionEntity(
     val answerType: AnswerType,
     val correctBoolean: Boolean? = null,          // used when answerType == TRUE_FALSE
     val acceptableAnswers: List<String> = emptyList(), // used when answerType == EXACT_TEXT
+    val remoteId: String? = null, // Supabase uuid, once published — only for VIDEO-owned questions so far
 )

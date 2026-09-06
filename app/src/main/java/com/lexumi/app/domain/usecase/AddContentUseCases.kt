@@ -35,17 +35,19 @@ class AddImageContentUseCase @Inject constructor(private val repo: ImageContentR
     }
 }
 
+/** Videos are YouTube-link-only (no local file upload) — a locally-hosted file can't be
+ * published/synced to other users without file storage, which isn't implemented. */
 class AddVideoUseCase @Inject constructor(private val repo: VideoRepository) {
     suspend operator fun invoke(
-        topicId: Long, name: String, youtubeUrl: String?, localVideoPath: String?, originalText: String?,
+        topicId: Long, name: String, youtubeUrl: String?, originalText: String?,
         translationText: String?, ruleIds: List<Long>, questions: List<TestQuestion>,
     ): AddResult {
         val trimmedName = name.trim()
         val trimmedUrl = youtubeUrl?.trim().takeUnless { it.isNullOrBlank() }
-        if (trimmedName.isEmpty() || (trimmedUrl == null && localVideoPath == null)) return AddResult.Blank
+        if (trimmedName.isEmpty() || trimmedUrl == null) return AddResult.Blank
         if (repo.exists(topicId, trimmedName)) return AddResult.AlreadyExists
         return AddResult.Success(
-            repo.addVideo(topicId, trimmedName, trimmedUrl, localVideoPath, originalText, translationText, ruleIds, questions)
+            repo.addVideo(topicId, trimmedName, trimmedUrl, originalText, translationText, ruleIds, questions)
         )
     }
 }
@@ -63,11 +65,11 @@ class AddAudioDialogUseCase @Inject constructor(private val repo: AudioDialogRep
 }
 
 class AddSentenceUseCase @Inject constructor(private val repo: SentenceRepository) {
-    suspend operator fun invoke(topicId: Long, name: String, text: String, translations: List<String>, ruleIds: List<Long>): AddResult {
-        val trimmedName = name.trim()
-        if (trimmedName.isEmpty() || text.isBlank() || translations.firstOrNull()?.isBlank() != false) return AddResult.Blank
-        if (repo.exists(topicId, trimmedName)) return AddResult.AlreadyExists
-        return AddResult.Success(repo.addSentence(topicId, trimmedName, text, translations.filter { it.isNotBlank() }, ruleIds))
+    suspend operator fun invoke(topicId: Long, text: String, translations: List<String>, ruleIds: List<Long>): AddResult {
+        val trimmedText = text.trim()
+        if (trimmedText.isEmpty() || translations.firstOrNull()?.isBlank() != false) return AddResult.Blank
+        if (repo.exists(topicId, trimmedText)) return AddResult.AlreadyExists
+        return AddResult.Success(repo.addSentence(topicId, trimmedText, translations.filter { it.isNotBlank() }, ruleIds))
     }
 }
 

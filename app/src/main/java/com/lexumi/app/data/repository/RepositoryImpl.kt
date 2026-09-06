@@ -13,30 +13,37 @@ private fun UserProfileEntity.toDomain() = UserProfile(id, displayName)
 private fun LanguageEntity.toDomain() = Language(id, profileId, name, voiceName, remoteId)
 private fun SectionEntity.toDomain() = Section(id, languageId, name, position, remoteId)
 private fun TopicEntity.toDomain() = Topic(id, sectionId, name, position, remoteId)
-private fun RuleEntity.toDomain() = Rule(id, languageId, name, text, imagePath)
+private fun RuleEntity.toDomain() = Rule(id, languageId, name, text, imagePath, remoteId)
 private fun WordEntity.toDomain() = Word(id, topicId, imagePath, term, translation, ruleId, rating, correctStreak, typedStreak, typedReverseActive, voiceStreak, finalStreak, timesSeen, inReviewList, totalCorrect, bestStreak, currentStatsStreak, remoteId)
-private fun ImageContentEntity.toDomain() = ImageContent(id, topicId, name, imagePath, translation)
-private fun VideoEntity.toDomain() = VideoContent(id, topicId, name, youtubeUrl, localVideoPath, originalText, translationText, ruleIds)
+private fun ImageContentEntity.toDomain() = ImageContent(id, topicId, name, imagePath, translation, remoteId)
+private fun VideoEntity.toDomain() = VideoContent(id, topicId, name, youtubeUrl, localVideoPath, originalText, translationText, ruleIds, remoteId)
 private fun AudioDialogEntity.toDomain() = AudioDialog(id, topicId, name, audioPath, translationText, ruleIds)
-private fun SentenceEntity.toDomain() = Sentence(id, topicId, name, text, translations, ruleIds, rating, directStreak, reverseStreak, audioStreak, voiceStreak, timesSeen, totalCorrect, bestStreak, currentStatsStreak, known)
-private fun StoryEntity.toDomain() = Story(id, topicId, name, text, translation, ruleIds)
+private fun SentenceEntity.toDomain() = Sentence(id, topicId, text, translations, ruleIds, rating, directStreak, reverseStreak, audioStreak, voiceStreak, timesSeen, totalCorrect, bestStreak, currentStatsStreak, known, remoteId)
+private fun StoryEntity.toDomain() = Story(id, topicId, name, text, translation, ruleIds, remoteId)
 private fun TestQuestionEntity.toDomain() = TestQuestion(
     id, questionText,
     if (answerType == AnswerType.TRUE_FALSE) QuestionAnswerType.TRUE_FALSE else QuestionAnswerType.EXACT_TEXT,
-    correctBoolean, acceptableAnswers,
+    correctBoolean, acceptableAnswers, remoteId,
 )
 
 class ProfileRepositoryImpl @Inject constructor(private val dao: UserProfileDao) : ProfileRepository {
     override fun observeProfiles(): Flow<List<UserProfile>> = dao.observeAll().map { list -> list.map { it.toDomain() } }
     override suspend fun createProfile(name: String): Long = dao.insert(UserProfileEntity(displayName = name))
+    override suspend fun renameProfile(id: Long, name: String) = dao.rename(id, name)
     override suspend fun deleteProfile(profile: UserProfile) = dao.delete(UserProfileEntity(profile.id, profile.displayName))
     override suspend fun profileCount(): Int = dao.count()
     override suspend fun profileExists(id: Long): Boolean = dao.getById(id) != null
+    override suspend fun nextDefaultProfileName(): String {
+        val highest = dao.getAllDisplayNames()
+            .mapNotNull { Regex("^user(\\d+)$").matchEntire(it)?.groupValues?.get(1)?.toIntOrNull() }
+            .maxOrNull() ?: 0
+        return "user${highest + 1}"
+    }
 }
 
 class LanguageRepositoryImpl @Inject constructor(private val dao: LanguageDao) : LanguageRepository {
-    override fun observeLanguages(profileId: Long): Flow<List<Language>> =
-        dao.observeAll(profileId).map { list -> list.map { it.toDomain() } }
+    override fun observeLanguages(): Flow<List<Language>> =
+        dao.observeAll().map { list -> list.map { it.toDomain() } }
     override suspend fun getLanguage(id: Long): Language? = dao.getById(id)?.toDomain()
     override suspend fun exists(profileId: Long, name: String): Boolean = dao.countByName(profileId, name) > 0
     override suspend fun addLanguage(profileId: Long, name: String): Long =
@@ -135,11 +142,11 @@ class VideoRepositoryImpl @Inject constructor(
     override suspend fun getVideo(id: Long): VideoContent? = dao.getById(id)?.toDomain()
     override suspend fun exists(topicId: Long, name: String): Boolean = dao.countByName(topicId, name) > 0
     override suspend fun addVideo(
-        topicId: Long, name: String, youtubeUrl: String?, localVideoPath: String?, originalText: String?,
+        topicId: Long, name: String, youtubeUrl: String?, originalText: String?,
         translationText: String?, ruleIds: List<Long>, questions: List<TestQuestion>,
     ): Long {
         val id = dao.insert(
-            VideoEntity(topicId = topicId, name = name, youtubeUrl = youtubeUrl, localVideoPath = localVideoPath,
+            VideoEntity(topicId = topicId, name = name, youtubeUrl = youtubeUrl, localVideoPath = null,
                 originalText = originalText, translationText = translationText, ruleIds = ruleIds)
         )
         if (questions.isNotEmpty()) {
@@ -190,30 +197,30 @@ class SentenceRepositoryImpl @Inject constructor(private val dao: SentenceDao) :
     override fun observeSentences(topicId: Long): Flow<List<Sentence>> =
         dao.observeForTopic(topicId).map { list -> list.map { it.toDomain() } }
     override suspend fun getSentences(topicId: Long): List<Sentence> = dao.getForTopic(topicId).map { it.toDomain() }
-    override suspend fun exists(topicId: Long, name: String): Boolean = dao.countByName(topicId, name) > 0
-    override suspend fun addSentence(topicId: Long, name: String, text: String, translations: List<String>, ruleIds: List<Long>): Long =
-        dao.insert(SentenceEntity(topicId = topicId, name = name, text = text, translations = translations, ruleIds = ruleIds))
+    override suspend fun exists(topicId: Long, text: String): Boolean = dao.countByText(topicId, text) > 0
+    override suspend fun addSentence(topicId: Long, text: String, translations: List<String>, ruleIds: List<Long>): Long =
+        dao.insert(SentenceEntity(topicId = topicId, text = text, translations = translations, ruleIds = ruleIds))
     override suspend fun updateStats(sentence: Sentence) {
         dao.update(
             SentenceEntity(
-                id = sentence.id, topicId = sentence.topicId, name = sentence.name, text = sentence.text,
+                id = sentence.id, topicId = sentence.topicId, text = sentence.text,
                 translations = sentence.translations, ruleIds = sentence.ruleIds, rating = sentence.rating,
                 directStreak = sentence.directStreak, reverseStreak = sentence.reverseStreak,
                 audioStreak = sentence.audioStreak, voiceStreak = sentence.voiceStreak,
                 timesSeen = sentence.timesSeen, totalCorrect = sentence.totalCorrect,
                 bestStreak = sentence.bestStreak, currentStatsStreak = sentence.currentStatsStreak,
-                known = sentence.known,
+                known = sentence.known, remoteId = sentence.remoteId,
             )
         )
     }
     override suspend fun deleteSentence(sentence: Sentence) {
         dao.delete(
             SentenceEntity(
-                id = sentence.id, topicId = sentence.topicId, name = sentence.name, text = sentence.text,
+                id = sentence.id, topicId = sentence.topicId, text = sentence.text,
                 translations = sentence.translations, ruleIds = sentence.ruleIds,
                 timesSeen = sentence.timesSeen, totalCorrect = sentence.totalCorrect,
                 bestStreak = sentence.bestStreak, currentStatsStreak = sentence.currentStatsStreak,
-                known = sentence.known,
+                known = sentence.known, remoteId = sentence.remoteId,
             )
         )
     }

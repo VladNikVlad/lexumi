@@ -26,4 +26,5 @@ data class VideoEntity(
     val originalText: String? = null,
     val translationText: String? = null,
     val ruleIds: List<Long> = emptyList(),
+    val remoteId: String? = null, // Supabase uuid, once published — only set for youtubeUrl videos
 )

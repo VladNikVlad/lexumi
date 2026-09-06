@@ -20,7 +20,6 @@ import androidx.room.PrimaryKey
 data class SentenceEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val topicId: Long,
-    val name: String,
     val text: String,
     // first entry is the primary translation, the rest are additional valid ones
     val translations: List<String> = emptyList(),
@@ -39,4 +38,5 @@ data class SentenceEntity(
     val bestStreak: Int = 0,
     val currentStatsStreak: Int = 0,
     val known: Boolean = false,
+    val remoteId: String? = null, // Supabase uuid, once published
 )

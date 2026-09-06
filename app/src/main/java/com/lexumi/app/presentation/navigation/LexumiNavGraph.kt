@@ -17,6 +17,7 @@ import com.lexumi.app.presentation.language.AddLanguageScreen
 import com.lexumi.app.presentation.language.LanguageMenuScreen
 import com.lexumi.app.presentation.learnwords.LearnWordsScreen
 import com.lexumi.app.presentation.learnwords.ReviewWordsScreen
+import com.lexumi.app.presentation.profile.ProfileScreen
 import com.lexumi.app.presentation.rules.RulesListScreen
 import com.lexumi.app.presentation.section.AddSectionScreen
 import com.lexumi.app.presentation.section.SectionsScreen
@@ -257,8 +258,16 @@ fun LexumiNavGraph() {
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onBack = back,
+                onProfile = { navController.navigate(Screen.Profile.route) },
                 onLoggedOut = { navController.navigate(Screen.SignIn.route) { popUpTo(0) } },
                 onDataCleared = { navController.navigate(Screen.Welcome.route) { popUpTo(0) } },
+            )
+        }
+
+        composable(Screen.Profile.route) {
+            ProfileScreen(
+                onBack = back,
+                onChangeLearningLanguage = { navController.navigate(Screen.LanguageMenu.route) },
             )
         }
     }

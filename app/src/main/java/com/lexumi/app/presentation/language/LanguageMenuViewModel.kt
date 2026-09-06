@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -33,11 +32,9 @@ class LanguageMenuViewModel @Inject constructor(
     private val syncRepository: ContentSyncRepository,
 ) : ViewModel() {
 
-    val languages: StateFlow<List<Language>> = prefs.currentProfileId
-        .flatMapLatest { profileId ->
-            if (profileId == null) kotlinx.coroutines.flow.flowOf(emptyList())
-            else languageRepository.observeLanguages(profileId)
-        }
+    // Shared across all local profiles on this device (point 3 of the settings rework) —
+    // languages aren't filtered by the active profile anymore.
+    val languages: StateFlow<List<Language>> = languageRepository.observeLanguages()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _selected = MutableStateFlow<Long?>(null)
@@ -48,8 +45,12 @@ class LanguageMenuViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val isAdmin = authRepository.getMyProfile()?.isAdmin == true
-            _uiState.value = _uiState.value.copy(isAdmin = isAdmin)
+            val profileResult = runCatching { authRepository.getMyProfile() }
+            val isAdmin = profileResult.getOrNull()?.isAdmin == true
+            _uiState.value = _uiState.value.copy(
+                isAdmin = isAdmin,
+                message = profileResult.exceptionOrNull()?.let { "Не вдалося перевірити статус адміна: ${it.message}" },
+            )
             if (!isAdmin) refreshDownloadable()
         }
     }
@@ -72,9 +73,14 @@ class LanguageMenuViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(busy = true, message = null)
         viewModelScope.launch {
             val result = runCatching { syncRepository.publishLanguage(languageId) }
+            val skipped = result.getOrNull()?.skippedVideoNames.orEmpty()
             _uiState.value = _uiState.value.copy(
                 busy = false,
-                message = if (result.isSuccess) "Опубліковано" else "Не вдалося опублікувати: ${result.exceptionOrNull()?.message}",
+                message = when {
+                    result.isFailure -> "Не вдалося опублікувати: ${result.exceptionOrNull()?.message}"
+                    skipped.isNotEmpty() -> "Опубліковано (без відео без YouTube-посилання: ${skipped.joinToString(", ")})"
+                    else -> "Опубліковано"
+                },
             )
         }
     }

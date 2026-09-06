@@ -9,6 +9,9 @@ interface RuleDao {
     @Query("SELECT * FROM rules WHERE languageId = :languageId ORDER BY name ASC")
     fun observeForLanguage(languageId: Long): Flow<List<RuleEntity>>
 
+    @Query("SELECT * FROM rules WHERE languageId = :languageId ORDER BY name ASC")
+    suspend fun getForLanguage(languageId: Long): List<RuleEntity>
+
     @Query("SELECT * FROM rules WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<Long>): List<RuleEntity>
 
@@ -20,6 +23,9 @@ interface RuleDao {
 
     @Insert
     suspend fun insert(rule: RuleEntity): Long
+
+    @Query("UPDATE rules SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
 
     @Delete
     suspend fun delete(rule: RuleEntity)

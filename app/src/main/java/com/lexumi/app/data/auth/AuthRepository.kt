@@ -1,6 +1,7 @@
 package com.lexumi.app.data.auth
 
 import android.content.Context
+import android.util.Log
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
@@ -107,6 +108,10 @@ class AuthRepository @Inject constructor(
             provider = Google
             this.nonce = nonce
         }
+
+        val userId = supabase.auth.currentUserOrNull()?.id
+        Log.d("AUTH_DEBUG", "Current user id = $userId")
+
         ensureProfileRow()
     }
 

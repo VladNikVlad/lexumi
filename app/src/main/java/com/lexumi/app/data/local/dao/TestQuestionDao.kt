@@ -15,6 +15,9 @@ interface TestQuestionDao {
     @Insert
     suspend fun insertAll(questions: List<TestQuestionEntity>)
 
+    @Query("UPDATE test_questions SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
+
     @Delete
     suspend fun delete(question: TestQuestionEntity)
 }

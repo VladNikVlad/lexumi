@@ -59,8 +59,7 @@ class BulkAddSentencesViewModel @Inject constructor(
             var skippedDuplicate = 0
             lines.forEach { line ->
                 val translations = listOf(line.translation) + line.extraTranslations
-                // sentences are named by their own text, since there's no separate "name" field in bulk mode
-                when (addSentence(topicId, line.main, line.main, translations, emptyList())) {
+                when (addSentence(topicId, line.main, translations, emptyList())) {
                     is AddResult.Success -> added++
                     AddResult.AlreadyExists -> skippedDuplicate++
                     AddResult.Blank -> Unit

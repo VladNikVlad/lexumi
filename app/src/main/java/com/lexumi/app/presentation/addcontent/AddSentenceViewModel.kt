@@ -42,9 +42,9 @@ class AddSentenceViewModel @Inject constructor(
         }
     }
 
-    fun submit(name: String, text: String, translations: List<String>, ruleIds: List<Long>) {
+    fun submit(text: String, translations: List<String>, ruleIds: List<Long>) {
         viewModelScope.launch {
-            when (addSentence(topicId, name, text, translations, ruleIds)) {
+            when (addSentence(topicId, text, translations, ruleIds)) {
                 is AddResult.Success -> _created.value = true
                 AddResult.AlreadyExists -> _error.value = "Таке речення вже є в цій темі"
                 AddResult.Blank -> _error.value = "Заповніть речення і хоча б один переклад"

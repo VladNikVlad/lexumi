@@ -361,7 +361,7 @@ class SentencePracticeViewModel @Inject constructor(
         viewModelScope.launch {
             when (editSentence(sentence, text, translations, ruleIds)) {
                 is AddResult.Success -> {
-                    val updated = sentence.copy(name = text.trim(), text = text.trim(), translations = translations.filter { it.isNotBlank() }, ruleIds = ruleIds)
+                    val updated = sentence.copy(text = text.trim(), translations = translations.filter { it.isNotBlank() }, ruleIds = ruleIds)
                     allSentencesById = allSentencesById + (updated.id to updated)
                     _uiState.value = _uiState.value.copy(prompt = buildPrompt(updated), editError = null)
                 }
