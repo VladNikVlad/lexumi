@@ -17,6 +17,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Postgrest/ktor exception messages can include the full failed HTTP request for debugging —
+ * headers and all, which means a live `Authorization: Bearer <token>` ends up in this string.
+ * Never show that in a user-facing error message; cut it off at the first header dump. */
+private fun sanitizeSyncError(message: String?): String? =
+    message?.substringBefore("Headers:")?.trim()
+
 data class LanguageMenuUiState(
     val isAdmin: Boolean = false,
     val downloadableLanguages: List<DownloadableLanguage> = emptyList(),
@@ -77,7 +83,7 @@ class LanguageMenuViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(
                 busy = false,
                 message = when {
-                    result.isFailure -> "Не вдалося опублікувати: ${result.exceptionOrNull()?.message}"
+                    result.isFailure -> "Не вдалося опублікувати: ${sanitizeSyncError(result.exceptionOrNull()?.message)}"
                     skipped.isNotEmpty() -> "Опубліковано (без відео без YouTube-посилання: ${skipped.joinToString(", ")})"
                     else -> "Опубліковано"
                 },

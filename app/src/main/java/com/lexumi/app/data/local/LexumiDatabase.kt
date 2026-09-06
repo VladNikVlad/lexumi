@@ -23,7 +23,7 @@ import com.lexumi.app.data.local.entity.*
         SentenceTopicCrossRefEntity::class,
         StoryEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

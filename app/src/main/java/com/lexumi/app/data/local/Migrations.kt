@@ -549,7 +549,24 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
     }
 }
 
+/** The Supabase `words`/`sentences`/`topic_words`/`topic_sentences` tables were dropped and
+ * recreated to match the new language-scoped schema (see backend/SCHEMA.md) — any `remoteId`
+ * saved locally before that now points at a row that no longer exists there. Left alone,
+ * [com.lexumi.app.data.sync.ContentSyncRepository.publishLanguage] would try to UPDATE those
+ * stale ids (a silent no-op against Postgrest), then insert a `topic_words`/`topic_sentences`
+ * row referencing them and hit a foreign-key violation. Clearing them makes the next publish
+ * re-insert everything as new rows instead. */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("UPDATE words SET remoteId = NULL")
+        db.execSQL("UPDATE sentences SET remoteId = NULL")
+        db.execSQL("UPDATE word_topic_cross_ref SET remoteId = NULL")
+        db.execSQL("UPDATE sentence_topic_cross_ref SET remoteId = NULL")
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
     MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
+    MIGRATION_14_15,
 )
