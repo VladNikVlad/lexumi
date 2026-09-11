@@ -27,6 +27,8 @@ header {
   color: white;
 }
 header .brand { color: white; font-weight: 600; text-decoration: none; font-size: 1.1rem; }
+header nav a { color: white; text-decoration: none; opacity: 0.85; }
+header nav a:hover { opacity: 1; text-decoration: underline; }
 header button { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.4); }
 
 main {

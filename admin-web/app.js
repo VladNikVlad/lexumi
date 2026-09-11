@@ -1,6 +1,6 @@
 import { supabaseClient, requireAdmin } from './supabase-client.js';
 import {
-  listRows, insertRow, updateRow, deleteRow, findExactCi,
+  listRows, insertRow, updateRow, deleteRow, findExactCi, callRpc,
   joinList, splitList, joinRuleIds, splitRuleIds,
 } from './crud.js';
 import { compressImageToBase64 } from './image-compress.js';
@@ -93,6 +93,7 @@ function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'language' && parts[1]) renderLanguageDetail(parts[1]);
   else if (parts[0] === 'topic' && parts[1] && parts[2]) renderTopicDetail(parts[1], parts[2]);
+  else if (parts[0] === 'admins') renderAdmins();
   else renderLanguages();
 }
 
@@ -136,6 +137,40 @@ async function renderLanguages() {
     onDelete: async (id) => {
       if (confirm('Видалити мову і весь її вміст? Це незворотно.')) { await deleteRow('languages', id); renderLanguages(); }
     },
+  });
+}
+
+// ---------- admins ----------
+
+async function renderAdmins() {
+  app.innerHTML = `<div class="card"><p>Завантаження...</p></div>`;
+  // No filter — RLS itself decides what comes back ("read own or admin reads all"): since we're
+  // already confirmed to be an admin (requireAdmin() gated getting here), this returns every
+  // profile, not just our own.
+  const profiles = await listRows('profiles', {}, 'email');
+  app.innerHTML = `
+    <div class="card">
+      <h1>Адміни</h1>
+      <p class="hint">Людина має хоч раз увійти в Android-застосунок (Google Sign-In), перш ніж
+        з'явиться тут — рядок профілю створюється при першому вході.</p>
+      <ul class="list" id="admin-list">
+        ${profiles.map((p) => `
+          <li>
+            <span>${escapeHtml(p.display_name || '—')} — ${escapeHtml(p.email || '—')}
+              ${p.is_admin ? '<strong>(адмін)</strong>' : ''}</span>
+            <button data-toggle-admin="${p.id}" data-next="${!p.is_admin}" ${p.id === admin.id ? 'disabled title="Не можна змінити права самому собі"' : ''}>
+              ${p.is_admin ? 'Зняти права адміна' : 'Зробити адміном'}
+            </button>
+          </li>
+        `).join('') || '<li class="hint">Ще немає жодного профілю.</li>'}
+      </ul>
+    </div>
+  `;
+  $('#admin-list').querySelectorAll('[data-toggle-admin]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await callRpc('set_admin', { target_id: btn.dataset.toggleAdmin, new_value: btn.dataset.next === 'true' });
+      renderAdmins();
+    });
   });
 }
 

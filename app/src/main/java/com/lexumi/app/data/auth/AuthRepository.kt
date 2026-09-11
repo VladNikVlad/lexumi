@@ -49,6 +49,9 @@ data class RemoteProfile(
 @Serializable
 private data class ProfileUpsert(val id: String, @SerialName("display_name") val displayName: String?)
 
+@Serializable
+private data class EmailUpdate(@SerialName("email") val email: String)
+
 @Singleton
 class AuthRepository @Inject constructor(
     private val supabase: SupabaseClient,
@@ -128,6 +131,14 @@ class AuthRepository @Inject constructor(
         ) {
             onConflict = "id"
             ignoreDuplicates = true
+        }
+
+        // Separate from the upsert above (which is ignore-on-conflict, so it never touches an
+        // existing row) — this keeps `email` current on every sign-in, including for accounts
+        // that already had a profile row before this column existed. It's how the admin web
+        // panel identifies accounts when granting admin rights (admin-web/README.md).
+        user.email?.let { email ->
+            supabase.from("profiles").update(EmailUpdate(email)) { filter { eq("id", user.id) } }
         }
     }
 

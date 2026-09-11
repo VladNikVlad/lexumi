@@ -36,6 +36,15 @@ export async function deleteRow(table, id) {
   if (error) throw error;
 }
 
+/** Calls a Postgres RPC function — used where a plain table write is blocked by design (e.g.
+ * `is_admin` is revoked from direct client UPDATE; only the `set_admin` SECURITY DEFINER
+ * function, which re-checks admin status server-side, is allowed to change it). */
+export async function callRpc(name, args) {
+  const { data, error } = await supabaseClient.rpc(name, args);
+  if (error) throw error;
+  return data;
+}
+
 /** Case/whitespace-insensitive exact match within [rows] for word/sentence dedup — deliberately
  * NOT a `.ilike()` server-side filter: ILIKE treats `_`/`%` in the search value as wildcards,
  * which would silently mismatch on terms containing those characters. Mirrors the Kotlin side's
