@@ -356,7 +356,11 @@ async function renderWordsTab(container, topicId, languageId) {
   // Rule <select> is fetched async, so it's appended after the initial (synchronous) render.
   const form = document.getElementById('add-word-form');
   form.insertAdjacentHTML('beforeend', await ruleSelectHtml(languageId));
-  form.insertAdjacentHTML('beforeend', `<label class="file-label">Картинка (необов'язково, при редагуванні — лишити порожнім, щоб не міняти) <input type="file" name="image" accept="image/*"></label><button type="submit">Додати слово</button>`);
+  form.insertAdjacentHTML('beforeend', `
+    <label class="file-label">Картинка (необов'язково, при редагуванні — лишити порожнім, щоб не міняти) <input type="file" name="image" accept="image/*"></label>
+    <input type="text" name="translation_override" placeholder="Локальний переклад лише для цієї теми (необов'язково)">
+    <button type="submit">Додати слово</button>
+  `);
 
   document.getElementById('add-translation-field').addEventListener('click', () => {
     document.getElementById('translations-fields').insertAdjacentHTML('beforeend',
@@ -369,6 +373,8 @@ async function renderWordsTab(container, topicId, languageId) {
       form.term.value = word.term;
       setTranslationFields('translations-fields', splitList(word.translations));
       if (form.rule_id) form.rule_id.value = word.rule_id || '';
+      const link = links.find((l) => l.word_id === word.id);
+      form.translation_override.value = link?.translation_override || '';
     },
   });
   wireOwnerItemActions(container, 'words', () => renderWordsTab(container, topicId, languageId), { ...wordForm, rows: words });
@@ -387,6 +393,11 @@ async function renderWordsTab(container, topicId, languageId) {
       const patch = { term, translations: joinList(translations), rule_id: ruleId };
       if (imageData !== null) patch.image_data = imageData;
       await updateRow('words', wordForm.editingId, patch);
+      const link = links.find((l) => l.word_id === wordForm.editingId);
+      if (link) {
+        const override = fd.get('translation_override').trim();
+        await updateRow('topic_words', link.id, { translation_override: override || null });
+      }
       renderWordsTab(container, topicId, languageId);
       return;
     }
@@ -443,6 +454,7 @@ async function renderSentencesTab(container, topicId, languageId) {
       <div id="sentence-translations-fields"><input type="text" name="translation" placeholder="Переклад" required></div>
       <button type="button" id="add-sentence-translation-field">+ Ще один варіант перекладу</button>
       ${await ruleSelectHtml(languageId, true)}
+      <input type="text" name="translations_override" placeholder="Локальний переклад лише для цієї теми (необов'язково, кілька варіантів — через /)">
       <button type="submit">Додати речення</button>
     </form>
   `;
@@ -458,6 +470,8 @@ async function renderSentencesTab(container, topicId, languageId) {
       form.text.value = sentence.text;
       setTranslationFields('sentence-translations-fields', splitList(sentence.translations));
       setMultiSelectValues(form.rule_ids, splitRuleIds(sentence.rule_ids));
+      const link = links.find((l) => l.sentence_id === sentence.id);
+      form.translations_override.value = link?.translations_override ? splitList(link.translations_override).join(' / ') : '';
     },
   });
   wireOwnerItemActions(container, 'sentences', () => renderSentencesTab(container, topicId, languageId), { ...sentenceForm, rows: sentences });
@@ -474,6 +488,12 @@ async function renderSentencesTab(container, topicId, languageId) {
       await updateRow('sentences', sentenceForm.editingId, {
         text, translations: joinList(translations), rule_ids: joinRuleIds(ruleIds),
       });
+      const link = links.find((l) => l.sentence_id === sentenceForm.editingId);
+      if (link) {
+        const overrideRaw = fd.get('translations_override').trim();
+        const overrideList = overrideRaw ? overrideRaw.split('/').map((s) => s.trim()).filter(Boolean) : [];
+        await updateRow('topic_sentences', link.id, { translations_override: overrideList.length ? joinList(overrideList) : null });
+      }
       renderSentencesTab(container, topicId, languageId);
       return;
     }
