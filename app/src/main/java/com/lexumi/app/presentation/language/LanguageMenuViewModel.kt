@@ -91,6 +91,21 @@ class LanguageMenuViewModel @Inject constructor(
         }
     }
 
+    /** Anyone with a `remoteId`-linked language (admin or a regular user who downloaded it) can
+     * pull later server-side changes into their existing local copy — see
+     * [ContentSyncRepository.refreshLanguage] for what this does and doesn't touch. */
+    fun refresh(languageId: Long) {
+        if (_uiState.value.busy) return
+        _uiState.value = _uiState.value.copy(busy = true, message = null)
+        viewModelScope.launch {
+            val result = runCatching { syncRepository.refreshLanguage(languageId) }
+            _uiState.value = _uiState.value.copy(
+                busy = false,
+                message = if (result.isSuccess) "Оновлено" else "Не вдалося оновити: ${sanitizeSyncError(result.exceptionOrNull()?.message)}",
+            )
+        }
+    }
+
     /** Regular user: downloads an admin-published language into their own local copy, then opens it. */
     fun download(remoteLanguageId: String) {
         if (_uiState.value.busy) return

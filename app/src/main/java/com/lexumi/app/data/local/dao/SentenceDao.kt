@@ -18,6 +18,9 @@ interface SentenceDao {
     @Query("SELECT * FROM sentences WHERE id = :id")
     suspend fun getById(id: Long): SentenceEntity?
 
+    @Query("SELECT * FROM sentences WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun getByRemoteId(remoteId: String): SentenceEntity?
+
     @Query("SELECT * FROM sentences WHERE languageId = :languageId AND lower(trim(text)) = lower(trim(:text)) LIMIT 1")
     suspend fun findByLanguageAndText(languageId: Long, text: String): SentenceEntity?
 

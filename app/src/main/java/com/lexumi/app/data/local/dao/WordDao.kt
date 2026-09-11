@@ -21,6 +21,9 @@ interface WordDao {
     @Query("SELECT * FROM words WHERE id = :id")
     suspend fun getById(id: Long): WordEntity?
 
+    @Query("SELECT * FROM words WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun getByRemoteId(remoteId: String): WordEntity?
+
     @Query("SELECT * FROM words WHERE languageId = :languageId AND lower(trim(term)) = lower(trim(:term)) LIMIT 1")
     suspend fun findByLanguageAndTerm(languageId: Long, term: String): WordEntity?
 

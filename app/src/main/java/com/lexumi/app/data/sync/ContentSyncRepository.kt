@@ -762,4 +762,295 @@ class ContentSyncRepository @Inject constructor(
         }
         return localLanguageId
     }
+
+    /** Pulls the latest server state of an already-downloaded/published language into the
+     * existing local copy — anyone with a `remoteId`-linked language can use this, not just the
+     * admin who originally published it (e.g. content added later through the admin web panel is
+     * otherwise invisible locally, since [downloadLanguage] only ever runs once). Rows that
+     * already exist locally (matched by `remoteId`) get their content fields updated in place —
+     * `rating`/streak/progress fields on words and sentences are never touched, and no row's
+     * local `id` ever changes (topics/sections are FK parents with `ON DELETE CASCADE`, so
+     * replacing them instead of updating them would wipe everything nested under them).
+     *
+     * Deliberately one-directional in the safe direction: nothing gets deleted locally just
+     * because it disappeared remotely, even for the "leaf" join tables (`topic_words` etc.) that
+     * get wiped and reinserted per topic — those hold no progress of their own, only a stale
+     * `translationOverride`, so it's safe to always replace them wholesale, but the *rows they
+     * point at* (words/sentences/...) are never removed by this pass. See the plan notes for why
+     * (a bug here could otherwise cascade-delete real user progress).
+     *
+     * Split into small `private suspend fun`s per entity for the same reason [publishLanguage] is
+     * (readability for an otherwise very long method) — this one isn't `inline`, so it doesn't
+     * have that method's bytecode-size risk, but the same shape reads better. */
+    suspend fun refreshLanguage(localLanguageId: Long) {
+        val language = languageDao.getById(localLanguageId) ?: return
+        val remoteLanguageId = requireNotNull(language.remoteId) { "Ця мова ще не пов'язана з сервером" }
+
+        val languageRow = supabase.from("languages")
+            .select(Columns.list("id", "name", "voice_name")) { filter { eq("id", remoteLanguageId) } }
+            .decodeSingle<RemoteLanguageRow>()
+        languageDao.update(language.copy(name = languageRow.name, voiceName = languageRow.voiceName))
+
+        val ruleIdMap = refreshRules(localLanguageId, remoteLanguageId)
+        val wordIdMap = refreshWords(localLanguageId, remoteLanguageId, ruleIdMap)
+        val sentenceIdMap = refreshSentences(localLanguageId, remoteLanguageId, ruleIdMap)
+
+        val sections = supabase.from("sections")
+            .select(Columns.list("id", "name", "position")) { filter { eq("language_id", remoteLanguageId) } }
+            .decodeList<RemoteSectionRow>()
+        for (sectionRow in sections) {
+            val remoteSectionId = requireNotNull(sectionRow.id)
+            val existingSection = sectionDao.getByRemoteId(remoteSectionId)
+            val localSectionId = if (existingSection != null) {
+                sectionDao.update(existingSection.copy(name = sectionRow.name, position = sectionRow.position))
+                existingSection.id
+            } else {
+                sectionDao.insert(SectionEntity(languageId = localLanguageId, name = sectionRow.name, position = sectionRow.position, remoteId = remoteSectionId))
+            }
+
+            val topics = supabase.from("topics")
+                .select(Columns.list("id", "name", "position")) { filter { eq("section_id", remoteSectionId) } }
+                .decodeList<RemoteTopicRow>()
+            for (topicRow in topics) {
+                val remoteTopicId = requireNotNull(topicRow.id)
+                val existingTopic = topicDao.getByRemoteId(remoteTopicId)
+                val localTopicId = if (existingTopic != null) {
+                    topicDao.update(existingTopic.copy(name = topicRow.name, position = topicRow.position))
+                    existingTopic.id
+                } else {
+                    topicDao.insert(TopicEntity(sectionId = localSectionId, name = topicRow.name, position = topicRow.position, remoteId = remoteTopicId))
+                }
+
+                refreshTopicWords(localTopicId, remoteTopicId, wordIdMap)
+                refreshTopicSentences(localTopicId, remoteTopicId, sentenceIdMap)
+                refreshVideos(localTopicId, remoteTopicId, ruleIdMap)
+                refreshStories(localTopicId, remoteTopicId, ruleIdMap)
+                refreshImages(localTopicId, remoteTopicId)
+                refreshAudioDialogs(localTopicId, remoteTopicId, ruleIdMap)
+            }
+        }
+    }
+
+    private suspend fun refreshRules(localLanguageId: Long, remoteLanguageId: String): Map<String, Long> {
+        val remoteRules = supabase.from("rules")
+            .select(Columns.list("id", "name", "text", "image_data")) { filter { eq("language_id", remoteLanguageId) } }
+            .decodeList<RemoteRuleRow>()
+        val ruleIdMap = mutableMapOf<String, Long>()
+        for (ruleRow in remoteRules) {
+            val remoteRuleId = requireNotNull(ruleRow.id)
+            val existing = ruleDao.getByRemoteId(remoteRuleId)
+            val imagePath = decodeImageToFile(context, ruleRow.imageData, "rule")
+            val localId = if (existing != null) {
+                ruleDao.update(existing.copy(name = ruleRow.name, text = ruleRow.text, imagePath = imagePath))
+                existing.id
+            } else {
+                ruleDao.insert(RuleEntity(languageId = localLanguageId, name = ruleRow.name, text = ruleRow.text, imagePath = imagePath, remoteId = remoteRuleId))
+            }
+            ruleIdMap[remoteRuleId] = localId
+        }
+        return ruleIdMap
+    }
+
+    private suspend fun refreshWords(localLanguageId: Long, remoteLanguageId: String, ruleIdMap: Map<String, Long>): Map<String, Long> {
+        val remoteWords = supabase.from("words")
+            .select(Columns.list("id", "term", "translations", "rule_id", "image_data")) { filter { eq("language_id", remoteLanguageId) } }
+            .decodeList<RemoteWordRow>()
+        val wordIdMap = mutableMapOf<String, Long>()
+        for (wordRow in remoteWords) {
+            val remoteWordId = requireNotNull(wordRow.id)
+            val existing = wordDao.getByRemoteId(remoteWordId)
+            val translations = wordRow.translations.split(LIST_SEPARATOR)
+            val ruleId = wordRow.ruleId?.let { ruleIdMap[it] }
+            val imagePath = decodeImageToFile(context, wordRow.imageData, "word")
+            val localId = if (existing != null) {
+                // Content only — rating/streaks/timesSeen etc. are deliberately untouched.
+                wordDao.update(existing.copy(term = wordRow.term, translations = translations, ruleId = ruleId, imagePath = imagePath))
+                existing.id
+            } else {
+                wordDao.insert(
+                    WordEntity(languageId = localLanguageId, term = wordRow.term, translations = translations, ruleId = ruleId, imagePath = imagePath, remoteId = remoteWordId),
+                )
+            }
+            wordIdMap[remoteWordId] = localId
+        }
+        return wordIdMap
+    }
+
+    private suspend fun refreshSentences(localLanguageId: Long, remoteLanguageId: String, ruleIdMap: Map<String, Long>): Map<String, Long> {
+        val remoteSentences = supabase.from("sentences")
+            .select(Columns.list("id", "text", "translations", "rule_ids")) { filter { eq("language_id", remoteLanguageId) } }
+            .decodeList<RemoteSentenceRow>()
+        val sentenceIdMap = mutableMapOf<String, Long>()
+        for (sentenceRow in remoteSentences) {
+            val remoteSentenceId = requireNotNull(sentenceRow.id)
+            val existing = sentenceDao.getByRemoteId(remoteSentenceId)
+            val translations = sentenceRow.translations.split(LIST_SEPARATOR)
+            val ruleIds = sentenceRow.ruleIds.toLocalRuleIds(ruleIdMap)
+            val localId = if (existing != null) {
+                sentenceDao.update(existing.copy(text = sentenceRow.text, translations = translations, ruleIds = ruleIds))
+                existing.id
+            } else {
+                sentenceDao.insert(SentenceEntity(languageId = localLanguageId, text = sentenceRow.text, translations = translations, ruleIds = ruleIds, remoteId = remoteSentenceId))
+            }
+            sentenceIdMap[remoteSentenceId] = localId
+        }
+        return sentenceIdMap
+    }
+
+    private suspend fun refreshTopicWords(localTopicId: Long, remoteTopicId: String, wordIdMap: Map<String, Long>) {
+        val topicWords = supabase.from("topic_words")
+            .select(Columns.list("id", "word_id", "translation_override", "position")) { filter { eq("topic_id", remoteTopicId) } }
+            .decodeList<RemoteTopicWordRow>()
+        wordTopicCrossRefDao.deleteAllForTopic(localTopicId)
+        for (linkRow in topicWords) {
+            val localWordId = wordIdMap[linkRow.wordId] ?: continue
+            wordTopicCrossRefDao.insert(
+                WordTopicCrossRefEntity(
+                    topicId = localTopicId, wordId = localWordId, translationOverride = linkRow.translationOverride,
+                    position = linkRow.position, remoteId = requireNotNull(linkRow.id),
+                ),
+            )
+        }
+    }
+
+    private suspend fun refreshTopicSentences(localTopicId: Long, remoteTopicId: String, sentenceIdMap: Map<String, Long>) {
+        val topicSentences = supabase.from("topic_sentences")
+            .select(Columns.list("id", "sentence_id", "translations_override", "position")) { filter { eq("topic_id", remoteTopicId) } }
+            .decodeList<RemoteTopicSentenceRow>()
+        sentenceTopicCrossRefDao.deleteAllForTopic(localTopicId)
+        for (linkRow in topicSentences) {
+            val localSentenceId = sentenceIdMap[linkRow.sentenceId] ?: continue
+            sentenceTopicCrossRefDao.insert(
+                SentenceTopicCrossRefEntity(
+                    topicId = localTopicId, sentenceId = localSentenceId,
+                    translationsOverride = linkRow.translationsOverride?.split(LIST_SEPARATOR),
+                    position = linkRow.position, remoteId = requireNotNull(linkRow.id),
+                ),
+            )
+        }
+    }
+
+    private suspend fun refreshVideos(localTopicId: Long, remoteTopicId: String, ruleIdMap: Map<String, Long>) {
+        val videos = supabase.from("videos")
+            .select(Columns.list("id", "name", "youtube_url", "original_text", "translation_text", "rule_ids")) {
+                filter { eq("topic_id", remoteTopicId) }
+            }
+            .decodeList<RemoteVideoRow>()
+        for (videoRow in videos) {
+            val remoteVideoId = requireNotNull(videoRow.id)
+            val existing = videoDao.getByRemoteId(remoteVideoId)
+            val ruleIds = videoRow.ruleIds.toLocalRuleIds(ruleIdMap)
+            val localVideoId = if (existing != null) {
+                videoDao.update(
+                    existing.copy(
+                        name = videoRow.name, youtubeUrl = videoRow.youtubeUrl,
+                        originalText = videoRow.originalText, translationText = videoRow.translationText, ruleIds = ruleIds,
+                    ),
+                )
+                existing.id
+            } else {
+                videoDao.insert(
+                    VideoEntity(
+                        topicId = localTopicId, name = videoRow.name, youtubeUrl = videoRow.youtubeUrl,
+                        originalText = videoRow.originalText, translationText = videoRow.translationText,
+                        ruleIds = ruleIds, remoteId = remoteVideoId,
+                    ),
+                )
+            }
+
+            testQuestionDao.deleteAllForOwner(QuestionOwnerType.VIDEO, localVideoId)
+            val questions = supabase.from("test_questions")
+                .select(Columns.list("id", "question_text", "answer_type", "correct_boolean", "acceptable_answers")) {
+                    filter { eq("video_id", remoteVideoId) }
+                }
+                .decodeList<RemoteTestQuestionRow>()
+            for (questionRow in questions) {
+                testQuestionDao.insert(
+                    TestQuestionEntity(
+                        ownerType = QuestionOwnerType.VIDEO, ownerId = localVideoId, questionText = questionRow.questionText,
+                        answerType = if (questionRow.answerType == AnswerType.TRUE_FALSE.name) AnswerType.TRUE_FALSE else AnswerType.EXACT_TEXT,
+                        correctBoolean = questionRow.correctBoolean,
+                        acceptableAnswers = questionRow.acceptableAnswers?.split(LIST_SEPARATOR) ?: emptyList(),
+                        remoteId = questionRow.id,
+                    ),
+                )
+            }
+        }
+    }
+
+    private suspend fun refreshStories(localTopicId: Long, remoteTopicId: String, ruleIdMap: Map<String, Long>) {
+        val stories = supabase.from("stories")
+            .select(Columns.list("id", "name", "text", "translation", "rule_ids")) { filter { eq("topic_id", remoteTopicId) } }
+            .decodeList<RemoteStoryRow>()
+        for (storyRow in stories) {
+            val remoteStoryId = requireNotNull(storyRow.id)
+            val existing = storyDao.getByRemoteId(remoteStoryId)
+            val ruleIds = storyRow.ruleIds.toLocalRuleIds(ruleIdMap)
+            if (existing != null) {
+                storyDao.update(existing.copy(name = storyRow.name, text = storyRow.text, translation = storyRow.translation, ruleIds = ruleIds))
+            } else {
+                storyDao.insert(
+                    StoryEntity(topicId = localTopicId, name = storyRow.name, text = storyRow.text, translation = storyRow.translation, ruleIds = ruleIds, remoteId = remoteStoryId),
+                )
+            }
+        }
+    }
+
+    private suspend fun refreshImages(localTopicId: Long, remoteTopicId: String) {
+        val images = supabase.from("image_content")
+            .select(Columns.list("id", "name", "translation", "image_data")) { filter { eq("topic_id", remoteTopicId) } }
+            .decodeList<RemoteImageContentRow>()
+        for (imageRow in images) {
+            val remoteImageId = requireNotNull(imageRow.id)
+            val localPath = decodeImageToFile(context, imageRow.imageData, "image") ?: continue
+            val existing = imageContentDao.getByRemoteId(remoteImageId)
+            if (existing != null) {
+                imageContentDao.update(existing.copy(name = imageRow.name, imagePath = localPath, translation = imageRow.translation))
+            } else {
+                imageContentDao.insert(
+                    ImageContentEntity(topicId = localTopicId, name = imageRow.name, imagePath = localPath, translation = imageRow.translation, remoteId = remoteImageId),
+                )
+            }
+        }
+    }
+
+    private suspend fun refreshAudioDialogs(localTopicId: Long, remoteTopicId: String, ruleIdMap: Map<String, Long>) {
+        val dialogs = supabase.from("audio_dialogs")
+            .select(Columns.list("id", "name", "translation_text", "rule_ids", "audio_path")) { filter { eq("topic_id", remoteTopicId) } }
+            .decodeList<RemoteAudioDialogRow>()
+        for (dialogRow in dialogs) {
+            val remoteDialogId = requireNotNull(dialogRow.id)
+            val bytes = runCatching { supabase.storage.from(AUDIO_BUCKET).downloadPublic(dialogRow.audioPath) }.getOrNull()
+                ?: continue // couldn't fetch the audio file, leave whatever's local (if anything) alone
+            val localAudioPath = saveBytesToFile(context, bytes, "audio", "mp3")
+            val ruleIds = dialogRow.ruleIds.toLocalRuleIds(ruleIdMap)
+            val existing = audioDialogDao.getByRemoteId(remoteDialogId)
+            val localDialogId = if (existing != null) {
+                audioDialogDao.update(existing.copy(name = dialogRow.name, audioPath = localAudioPath, translationText = dialogRow.translationText, ruleIds = ruleIds))
+                existing.id
+            } else {
+                audioDialogDao.insert(
+                    AudioDialogEntity(topicId = localTopicId, name = dialogRow.name, audioPath = localAudioPath, translationText = dialogRow.translationText, ruleIds = ruleIds, remoteId = remoteDialogId),
+                )
+            }
+
+            testQuestionDao.deleteAllForOwner(QuestionOwnerType.AUDIO_DIALOG, localDialogId)
+            val questions = supabase.from("test_questions")
+                .select(Columns.list("id", "question_text", "answer_type", "correct_boolean", "acceptable_answers")) {
+                    filter { eq("audio_dialog_id", remoteDialogId) }
+                }
+                .decodeList<RemoteTestQuestionRow>()
+            for (questionRow in questions) {
+                testQuestionDao.insert(
+                    TestQuestionEntity(
+                        ownerType = QuestionOwnerType.AUDIO_DIALOG, ownerId = localDialogId, questionText = questionRow.questionText,
+                        answerType = if (questionRow.answerType == AnswerType.TRUE_FALSE.name) AnswerType.TRUE_FALSE else AnswerType.EXACT_TEXT,
+                        correctBoolean = questionRow.correctBoolean,
+                        acceptableAnswers = questionRow.acceptableAnswers?.split(LIST_SEPARATOR) ?: emptyList(),
+                        remoteId = questionRow.id,
+                    ),
+                )
+            }
+        }
+    }
 }

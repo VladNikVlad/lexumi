@@ -18,6 +18,9 @@ interface SectionDao {
     @Query("SELECT * FROM sections WHERE id = :id")
     suspend fun getById(id: Long): SectionEntity?
 
+    @Query("SELECT * FROM sections WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun getByRemoteId(remoteId: String): SectionEntity?
+
     @Query("SELECT COUNT(*) FROM sections WHERE languageId = :languageId AND lower(name) = lower(:name)")
     suspend fun countByName(languageId: Long, name: String): Int
 
@@ -26,6 +29,9 @@ interface SectionDao {
 
     @Insert
     suspend fun insert(section: SectionEntity): Long
+
+    @Update
+    suspend fun update(section: SectionEntity)
 
     @Delete
     suspend fun delete(section: SectionEntity)

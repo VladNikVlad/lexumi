@@ -27,6 +27,9 @@ interface SentenceTopicCrossRefDao {
     @Query("DELETE FROM sentence_topic_cross_ref WHERE topicId = :topicId AND sentenceId = :sentenceId")
     suspend fun deleteLink(topicId: Long, sentenceId: Long)
 
+    @Query("DELETE FROM sentence_topic_cross_ref WHERE topicId = :topicId")
+    suspend fun deleteAllForTopic(topicId: Long)
+
     @Query("UPDATE sentence_topic_cross_ref SET remoteId = :remoteId WHERE id = :id")
     suspend fun setRemoteId(id: Long, remoteId: String)
 }

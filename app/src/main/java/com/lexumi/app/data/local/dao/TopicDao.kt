@@ -18,11 +18,17 @@ interface TopicDao {
     @Query("SELECT * FROM topics WHERE id = :id")
     suspend fun getById(id: Long): TopicEntity?
 
+    @Query("SELECT * FROM topics WHERE remoteId = :remoteId LIMIT 1")
+    suspend fun getByRemoteId(remoteId: String): TopicEntity?
+
     @Query("SELECT COUNT(*) FROM topics WHERE sectionId = :sectionId AND lower(name) = lower(:name)")
     suspend fun countByName(sectionId: Long, name: String): Int
 
     @Insert
     suspend fun insert(topic: TopicEntity): Long
+
+    @Update
+    suspend fun update(topic: TopicEntity)
 
     @Query("UPDATE topics SET position = :position WHERE id = :id")
     suspend fun updatePosition(id: Long, position: Int)

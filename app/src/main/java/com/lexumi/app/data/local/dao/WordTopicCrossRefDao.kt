@@ -27,6 +27,9 @@ interface WordTopicCrossRefDao {
     @Query("DELETE FROM word_topic_cross_ref WHERE topicId = :topicId AND wordId = :wordId")
     suspend fun deleteLink(topicId: Long, wordId: Long)
 
+    @Query("DELETE FROM word_topic_cross_ref WHERE topicId = :topicId")
+    suspend fun deleteAllForTopic(topicId: Long)
+
     @Query("UPDATE word_topic_cross_ref SET remoteId = :remoteId WHERE id = :id")
     suspend fun setRemoteId(id: Long, remoteId: String)
 }

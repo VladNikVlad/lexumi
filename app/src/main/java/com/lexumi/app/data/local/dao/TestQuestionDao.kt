@@ -20,4 +20,7 @@ interface TestQuestionDao {
 
     @Delete
     suspend fun delete(question: TestQuestionEntity)
+
+    @Query("DELETE FROM test_questions WHERE ownerType = :ownerType AND ownerId = :ownerId")
+    suspend fun deleteAllForOwner(ownerType: QuestionOwnerType, ownerId: Long)
 }

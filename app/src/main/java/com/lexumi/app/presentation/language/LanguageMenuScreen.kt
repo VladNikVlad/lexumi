@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -126,6 +127,14 @@ fun LanguageMenuScreen(
                                 contentDescription = "Опублікувати",
                                 tint = if (language.remoteId != null) LexumiOutline else MaterialTheme.colorScheme.primary,
                             )
+                        }
+                    }
+                    // Anyone with a server-linked copy (admin or a user who downloaded it) can pull
+                    // later changes — e.g. content added through the admin web panel — back in.
+                    if (language.remoteId != null) {
+                        Spacer(Modifier.width(8.dp))
+                        IconButton(onClick = { viewModel.refresh(language.id) }, enabled = !uiState.busy) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Оновити з сервера", tint = LexumiOutline)
                         }
                     }
                 }
