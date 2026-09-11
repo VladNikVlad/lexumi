@@ -836,6 +836,19 @@ class ContentSyncRepository @Inject constructor(
                 refreshImages(localTopicId, remoteTopicId)
                 refreshAudioDialogs(localTopicId, remoteTopicId, ruleIdMap)
             }
+            // A whole topic removed server-side (e.g. via the admin web panel) — Room's
+            // ON DELETE CASCADE from topics to word_topic_cross_ref/sentence_topic_cross_ref/
+            // videos/stories/image_content/audio_dialogs takes care of everything nested under
+            // it (test_questions has no FK, per its own doc comment, so those specific rows are
+            // left as harmless orphans — never reachable again, but not a visible bug).
+            val remoteTopicIds = topics.mapNotNull { it.id }.toSet()
+            for (localTopic in topicDao.getForSection(localSectionId)) {
+                if (localTopic.remoteId != null && localTopic.remoteId !in remoteTopicIds) topicDao.delete(localTopic)
+            }
+        }
+        val remoteSectionIds = sections.mapNotNull { it.id }.toSet()
+        for (localSection in sectionDao.getForLanguage(localLanguageId)) {
+            if (localSection.remoteId != null && localSection.remoteId !in remoteSectionIds) sectionDao.delete(localSection)
         }
     }
 
@@ -855,6 +868,10 @@ class ContentSyncRepository @Inject constructor(
                 ruleDao.insert(RuleEntity(languageId = localLanguageId, name = ruleRow.name, text = ruleRow.text, imagePath = imagePath, remoteId = remoteRuleId))
             }
             ruleIdMap[remoteRuleId] = localId
+        }
+        val remoteRuleIds = remoteRules.mapNotNull { it.id }.toSet()
+        for (localRule in ruleDao.getForLanguage(localLanguageId)) {
+            if (localRule.remoteId != null && localRule.remoteId !in remoteRuleIds) ruleDao.delete(localRule)
         }
         return ruleIdMap
     }
@@ -881,6 +898,10 @@ class ContentSyncRepository @Inject constructor(
             }
             wordIdMap[remoteWordId] = localId
         }
+        val remoteWordIds = remoteWords.mapNotNull { it.id }.toSet()
+        for (localWord in wordDao.getForLanguage(localLanguageId)) {
+            if (localWord.remoteId != null && localWord.remoteId !in remoteWordIds) wordDao.deleteById(localWord.id)
+        }
         return wordIdMap
     }
 
@@ -901,6 +922,10 @@ class ContentSyncRepository @Inject constructor(
                 sentenceDao.insert(SentenceEntity(languageId = localLanguageId, text = sentenceRow.text, translations = translations, ruleIds = ruleIds, remoteId = remoteSentenceId))
             }
             sentenceIdMap[remoteSentenceId] = localId
+        }
+        val remoteSentenceIds = remoteSentences.mapNotNull { it.id }.toSet()
+        for (localSentence in sentenceDao.getForLanguage(localLanguageId)) {
+            if (localSentence.remoteId != null && localSentence.remoteId !in remoteSentenceIds) sentenceDao.deleteById(localSentence.id)
         }
         return sentenceIdMap
     }
@@ -984,6 +1009,15 @@ class ContentSyncRepository @Inject constructor(
                 )
             }
         }
+        val remoteVideoIds = videos.mapNotNull { it.id }.toSet()
+        for (localVideo in videoDao.getForTopic(localTopicId)) {
+            if (localVideo.remoteId != null && localVideo.remoteId !in remoteVideoIds) {
+                // TestQuestionEntity has no FK to video/audio_dialog (polymorphic owner, see its
+                // own doc comment) — deleting the video alone would leave its questions orphaned.
+                testQuestionDao.deleteAllForOwner(QuestionOwnerType.VIDEO, localVideo.id)
+                videoDao.delete(localVideo)
+            }
+        }
     }
 
     private suspend fun refreshStories(localTopicId: Long, remoteTopicId: String, ruleIdMap: Map<String, Long>) {
@@ -1002,6 +1036,10 @@ class ContentSyncRepository @Inject constructor(
                 )
             }
         }
+        val remoteStoryIds = stories.mapNotNull { it.id }.toSet()
+        for (localStory in storyDao.getForTopic(localTopicId)) {
+            if (localStory.remoteId != null && localStory.remoteId !in remoteStoryIds) storyDao.delete(localStory)
+        }
     }
 
     private suspend fun refreshImages(localTopicId: Long, remoteTopicId: String) {
@@ -1019,6 +1057,10 @@ class ContentSyncRepository @Inject constructor(
                     ImageContentEntity(topicId = localTopicId, name = imageRow.name, imagePath = localPath, translation = imageRow.translation, remoteId = remoteImageId),
                 )
             }
+        }
+        val remoteImageIds = images.mapNotNull { it.id }.toSet()
+        for (localImage in imageContentDao.getForTopic(localTopicId)) {
+            if (localImage.remoteId != null && localImage.remoteId !in remoteImageIds) imageContentDao.delete(localImage)
         }
     }
 
@@ -1058,6 +1100,13 @@ class ContentSyncRepository @Inject constructor(
                         remoteId = questionRow.id,
                     ),
                 )
+            }
+        }
+        val remoteDialogIds = dialogs.mapNotNull { it.id }.toSet()
+        for (localDialog in audioDialogDao.getForTopic(localTopicId)) {
+            if (localDialog.remoteId != null && localDialog.remoteId !in remoteDialogIds) {
+                testQuestionDao.deleteAllForOwner(QuestionOwnerType.AUDIO_DIALOG, localDialog.id)
+                audioDialogDao.delete(localDialog)
             }
         }
     }
