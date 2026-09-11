@@ -13,8 +13,10 @@ sealed class Screen(val route: String) {
     }
 
     // Sections / Topics (points 4, 5, 15, 16)
-    data object Sections : Screen("sections/{languageId}") {
-        fun build(languageId: Long) = "sections/$languageId"
+    // adminMode: true = "Самостійне вивчення" (admin-synced content, always read-only),
+    // false = "Власний матеріал" (the user's own, always editable) — see SectionsViewModel.
+    data object Sections : Screen("sections/{languageId}/{adminMode}") {
+        fun build(languageId: Long, adminMode: Boolean) = "sections/$languageId/$adminMode"
     }
     data object AddSection : Screen("add_section/{languageId}") {
         fun build(languageId: Long) = "add_section/$languageId"

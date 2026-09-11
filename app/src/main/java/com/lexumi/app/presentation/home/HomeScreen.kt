@@ -7,14 +7,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.School
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -28,16 +32,18 @@ import com.lexumi.app.presentation.components.SettingsIconButton
 
 @Composable
 fun HomeScreen(
-    onLearn: () -> Unit,
-    onAddSection: () -> Unit,
+    onSelfStudy: () -> Unit,
+    onOwnMaterial: () -> Unit,
     onRepeatWords: () -> Unit,
     onContinueLast: (topicId: Long, route: String) -> Unit,
-    onChooseOtherSection: () -> Unit,
     onSettings: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val lastSession by viewModel.lastSession.collectAsState()
-    val canEdit by viewModel.canEdit.collectAsState()
+    // "Продовжити навчання" is offered first if there's a saved session, but the 3 mode buttons
+    // should still be reachable from there without a real navigation — this just reveals them
+    // in place, matching how "Вибрати інший розділ" always used to work.
+    var showModes by remember { mutableStateOf(false) }
 
     GradientBackground {
         SettingsIconButton(onClick = onSettings, modifier = Modifier.align(Alignment.TopEnd).padding(20.dp))
@@ -50,7 +56,7 @@ fun HomeScreen(
             Spacer(Modifier.height(40.dp))
 
             val session = lastSession
-            if (session != null) {
+            if (session != null && !showModes) {
                 PillActionButton(
                     text = stringResource(R.string.continue_learning),
                     icon = Icons.Filled.MenuBook,
@@ -60,27 +66,29 @@ fun HomeScreen(
                 PillActionButton(
                     text = stringResource(R.string.choose_other_section),
                     icon = Icons.Filled.Public,
-                    onClick = onChooseOtherSection,
+                    onClick = { showModes = true },
                 )
             } else {
                 PillActionButton(
-                    text = stringResource(R.string.learn),
+                    text = stringResource(R.string.system_learning),
+                    subtitle = stringResource(R.string.system_learning_subtitle),
                     icon = Icons.Filled.School,
-                    onClick = onLearn,
+                    enabled = false,
+                    onClick = {},
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
-                // Hidden for admin-published content a non-admin is just browsing — see
-                // IsLanguageEditableUseCase; adding sections is only meaningful for content the
-                // user actually owns (their own language, or the admin's own published one).
-                if (canEdit) {
-                    PillActionButton(
-                        text = stringResource(R.string.add_new_section),
-                        subtitle = stringResource(R.string.add_new_section_subtitle),
-                        icon = Icons.Filled.Add,
-                        onClick = onAddSection,
-                        modifier = Modifier.padding(bottom = 16.dp),
-                    )
-                }
+                PillActionButton(
+                    text = stringResource(R.string.self_study),
+                    icon = Icons.Filled.AutoStories,
+                    onClick = { viewModel.enterSelfStudy(); onSelfStudy() },
+                    modifier = Modifier.padding(bottom = 16.dp),
+                )
+                PillActionButton(
+                    text = stringResource(R.string.own_material),
+                    icon = Icons.Filled.Person,
+                    onClick = onOwnMaterial,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                )
                 PillActionButton(
                     text = stringResource(R.string.repeat_words),
                     icon = Icons.Filled.Autorenew,

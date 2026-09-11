@@ -4,7 +4,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lexumi.app.domain.repository.*
-import com.lexumi.app.domain.usecase.IsLanguageEditableUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,8 +31,6 @@ class TopicActionViewModel @Inject constructor(
     storyRepository: StoryRepository,
     imageContentRepository: ImageContentRepository,
     topicRepository: TopicRepository,
-    sectionRepository: SectionRepository,
-    isLanguageEditable: IsLanguageEditableUseCase,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -42,7 +39,9 @@ class TopicActionViewModel @Inject constructor(
     private val _topicName = MutableStateFlow("")
     val topicName: StateFlow<String> = _topicName
 
-    // Fail-closed: hidden until the async check resolves — see HomeViewModel for why.
+    // Fail-closed: hidden until the topic's own remoteId is known — synced from the admin
+    // (remoteId != null) means always read-only, created by the user means always editable.
+    // No admin check anymore: editing admin content is a web-panel-only job now.
     private val _canEdit = MutableStateFlow(false)
     val canEdit: StateFlow<Boolean> = _canEdit
 
@@ -50,8 +49,7 @@ class TopicActionViewModel @Inject constructor(
         viewModelScope.launch {
             val topic = topicRepository.getTopic(topicId)
             _topicName.value = topic?.name.orEmpty()
-            val languageId = topic?.let { sectionRepository.getSection(it.sectionId)?.languageId }
-            _canEdit.value = languageId == null || isLanguageEditable(languageId)
+            _canEdit.value = topic?.remoteId == null
         }
     }
 

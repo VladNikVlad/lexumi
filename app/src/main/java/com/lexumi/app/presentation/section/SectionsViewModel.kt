@@ -5,32 +5,28 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lexumi.app.domain.model.Section
 import com.lexumi.app.domain.repository.SectionRepository
-import com.lexumi.app.domain.usecase.IsLanguageEditableUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class SectionsViewModel @Inject constructor(
     sectionRepository: SectionRepository,
-    isLanguageEditable: IsLanguageEditableUseCase,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     val languageId: Long = checkNotNull(savedStateHandle["languageId"])
 
-    val sections: StateFlow<List<Section>> = sectionRepository.observeSections(languageId)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /** true = "Самостійне вивчення" (admin-synced, always read-only), false = "Власний матеріал"
+     * (the user's own, always editable) — see Screen.Sections' own doc comment. */
+    private val adminMode: Boolean = checkNotNull(savedStateHandle["adminMode"])
 
-    // Fail-closed: hidden until the async check resolves — see HomeViewModel for why.
-    private val _canEdit = MutableStateFlow(false)
-    val canEdit: StateFlow<Boolean> = _canEdit
+    val canEdit: Boolean = !adminMode
 
-    init {
-        viewModelScope.launch { _canEdit.value = isLanguageEditable(languageId) }
-    }
+    val sections: StateFlow<List<Section>> = (
+        if (adminMode) sectionRepository.observeAdminSections(languageId)
+        else sectionRepository.observePersonalSections(languageId)
+    ).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 }

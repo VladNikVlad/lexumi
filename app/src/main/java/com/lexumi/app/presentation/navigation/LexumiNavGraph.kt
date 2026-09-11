@@ -96,16 +96,21 @@ fun LexumiNavGraph() {
         composable(Screen.Home.route, arguments = listOf(navArgument("languageId") { type = NavType.LongType })) { entry ->
             val languageId = entry.arguments!!.getLong("languageId")
             HomeScreen(
-                onLearn = { navController.navigate(Screen.Sections.build(languageId)) },
-                onAddSection = { navController.navigate(Screen.AddSection.build(languageId)) },
+                onSelfStudy = { navController.navigate(Screen.Sections.build(languageId, adminMode = true)) },
+                onOwnMaterial = { navController.navigate(Screen.Sections.build(languageId, adminMode = false)) },
                 onRepeatWords = { navController.navigate(Screen.ReviewWords.route) },
                 onContinueLast = { topicId, route -> navController.navigate("$route/$topicId") },
-                onChooseOtherSection = { navController.navigate(Screen.Sections.build(languageId)) },
                 onSettings = { navController.navigate(Screen.Settings.route) },
             )
         }
 
-        composable(Screen.Sections.route, arguments = listOf(navArgument("languageId") { type = NavType.LongType })) { entry ->
+        composable(
+            Screen.Sections.route,
+            arguments = listOf(
+                navArgument("languageId") { type = NavType.LongType },
+                navArgument("adminMode") { type = NavType.BoolType },
+            ),
+        ) { entry ->
             val languageId = entry.arguments!!.getLong("languageId")
             SectionsScreen(
                 onSectionChosen = { sectionId -> navController.navigate(Screen.Topics.build(sectionId)) },

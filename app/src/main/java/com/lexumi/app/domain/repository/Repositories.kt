@@ -25,6 +25,10 @@ interface LanguageRepository {
 
 interface SectionRepository {
     fun observeSections(languageId: Long): Flow<List<Section>>
+    /** "Самостійне вивчення" — sections synced from an admin-published language, always read-only. */
+    fun observeAdminSections(languageId: Long): Flow<List<Section>>
+    /** "Власний матеріал" — sections the user created themselves, never touched by sync. */
+    fun observePersonalSections(languageId: Long): Flow<List<Section>>
     suspend fun getSection(id: Long): Section?
     suspend fun exists(languageId: Long, name: String): Boolean
     suspend fun addSection(languageId: Long, name: String): Long

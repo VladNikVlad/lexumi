@@ -54,6 +54,10 @@
     <string name="continue_learning">Продовжити навчання</string>
     <string name="choose_other_section">Вибрати інший розділ</string>
     <string name="repeat_words">Повторити слова</string>
+    <string name="system_learning">Системне вивчення</string>
+    <string name="system_learning_subtitle">Ще не готово</string>
+    <string name="self_study">Самостійне вивчення</string>
+    <string name="own_material">Власний матеріал</string>
 
     <!-- Topic actions -->
     <string name="learn_rules">Правила</string>
@@ -76,8 +80,6 @@
     <string name="create_profile">Створити профіль</string>
     <string name="profile_name_label">Ім\'я профілю</string>
     <string name="change_learning_language">Змінити мову вивчення</string>
-    <string name="admin_badge_yes">Адміністратор: так</string>
-    <string name="admin_badge_no">Адміністратор: ні</string>
     <string name="add_new_profile">Створити новий профіль</string>
     <string name="logout">Вийти</string>
     <string name="delete_all_data">Видалити всі дані</string>

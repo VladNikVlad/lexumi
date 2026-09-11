@@ -63,7 +63,7 @@ fun FolderGridPicker(
     modifier: Modifier = Modifier,
     onReorder: ((List<Long>) -> Unit)? = null,
     // Null hides the "add" tile entirely — e.g. read-only browsing of admin-published content
-    // (see IsLanguageEditableUseCase), where there's nothing for the user to add here.
+    // ("Самостійне вивчення"), where there's nothing for the user to add here.
     addLabel: String? = null,
     onAddClick: (() -> Unit)? = null,
 ) {

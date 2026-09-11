@@ -4,28 +4,22 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lexumi.app.data.auth.AuthRepository
 import com.lexumi.app.data.datastore.UserPreferences
 import com.lexumi.app.domain.model.UserProfile
 import com.lexumi.app.domain.repository.ProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class ProfileUiState(
-    val isAdmin: Boolean = false,
-    val message: String? = null,
-)
-
+/** Admin status doesn't affect anything in the Android app anymore — publishing/editing admin
+ * content is a web-panel-only job now (admin-web/), so there's nothing here to check it for. */
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val prefs: UserPreferences,
     private val profileRepository: ProfileRepository,
-    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     val currentProfileId: StateFlow<Long?> = prefs.currentProfileId
@@ -33,19 +27,6 @@ class ProfileViewModel @Inject constructor(
 
     val profiles: StateFlow<List<UserProfile>> = profileRepository.observeProfiles()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    private val _uiState = MutableStateFlow(ProfileUiState())
-    val uiState: StateFlow<ProfileUiState> = _uiState
-
-    init {
-        viewModelScope.launch {
-            val profileResult = runCatching { authRepository.getMyProfile() }
-            _uiState.value = _uiState.value.copy(
-                isAdmin = profileResult.getOrNull()?.isAdmin == true,
-                message = profileResult.exceptionOrNull()?.let { "Не вдалося перевірити статус адміна: ${it.message}" },
-            )
-        }
-    }
 
     fun setAppLanguage(languageTag: String) {
         AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(languageTag))

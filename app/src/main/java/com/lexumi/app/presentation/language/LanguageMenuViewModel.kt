@@ -2,9 +2,7 @@ package com.lexumi.app.presentation.language
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lexumi.app.data.auth.AuthRepository
 import com.lexumi.app.data.datastore.UserPreferences
-import com.lexumi.app.data.network.ConnectivityChecker
 import com.lexumi.app.data.sync.ContentSyncRepository
 import com.lexumi.app.data.sync.DownloadableLanguage
 import com.lexumi.app.domain.model.Language
@@ -25,19 +23,20 @@ private fun sanitizeSyncError(message: String?): String? =
     message?.substringBefore("Headers:")?.trim()
 
 data class LanguageMenuUiState(
-    val isAdmin: Boolean = false,
     val downloadableLanguages: List<DownloadableLanguage> = emptyList(),
     val busy: Boolean = false,
     val message: String? = null,
 )
 
+/** Publishing (pushing local content up as global admin material) no longer happens from
+ * Android at all — that's exclusively a job for the admin web panel (admin-web/) now. This
+ * ViewModel only ever reads: browsing/downloading/refreshing admin-published content, same as
+ * any other user would. */
 @HiltViewModel
 class LanguageMenuViewModel @Inject constructor(
     private val languageRepository: LanguageRepository,
     private val prefs: UserPreferences,
-    private val authRepository: AuthRepository,
     private val syncRepository: ContentSyncRepository,
-    private val connectivityChecker: ConnectivityChecker,
 ) : ViewModel() {
 
     // Shared across all local profiles on this device (point 3 of the settings rework) —
@@ -52,15 +51,7 @@ class LanguageMenuViewModel @Inject constructor(
     val uiState: StateFlow<LanguageMenuUiState> = _uiState
 
     init {
-        viewModelScope.launch {
-            val profileResult = runCatching { authRepository.getMyProfile() }
-            val isAdmin = profileResult.getOrNull()?.isAdmin == true
-            _uiState.value = _uiState.value.copy(
-                isAdmin = isAdmin,
-                message = profileResult.exceptionOrNull()?.let { "Не вдалося перевірити статус адміна: ${it.message}" },
-            )
-            if (!isAdmin) refreshDownloadable()
-        }
+        viewModelScope.launch { refreshDownloadable() }
     }
 
     private suspend fun refreshDownloadable() {
@@ -73,40 +64,11 @@ class LanguageMenuViewModel @Inject constructor(
             prefs.setSelectedLanguage(languageId)
             _selected.value = languageId
         }
-        // Best-effort background refresh, not a user-facing action — errors are swallowed and
-        // there's no `busy`/`message` update, so a slow or failed sync never blocks navigation or
-        // shows a confusing error for what the user didn't explicitly ask for. The manual
-        // "Оновити" button (`refresh`, above) stays available for a deliberate retry with visible
-        // feedback if this silently didn't work (e.g. no connectivity right now).
-        viewModelScope.launch {
-            val language = languageRepository.getLanguage(languageId) ?: return@launch
-            if (language.remoteId != null && connectivityChecker.isOnline()) {
-                runCatching { syncRepository.refreshLanguage(languageId) }
-            }
-        }
     }
 
-    /** Admin: pushes this language (and everything under it) to Supabase as global content. */
-    fun publish(languageId: Long) {
-        if (_uiState.value.busy) return
-        _uiState.value = _uiState.value.copy(busy = true, message = null)
-        viewModelScope.launch {
-            val result = runCatching { syncRepository.publishLanguage(languageId) }
-            val skipped = result.getOrNull()?.skippedVideoNames.orEmpty()
-            _uiState.value = _uiState.value.copy(
-                busy = false,
-                message = when {
-                    result.isFailure -> "Не вдалося опублікувати: ${sanitizeSyncError(result.exceptionOrNull()?.message)}"
-                    skipped.isNotEmpty() -> "Опубліковано (без відео без YouTube-посилання: ${skipped.joinToString(", ")})"
-                    else -> "Опубліковано"
-                },
-            )
-        }
-    }
-
-    /** Anyone with a `remoteId`-linked language (admin or a regular user who downloaded it) can
-     * pull later server-side changes into their existing local copy — see
-     * [ContentSyncRepository.refreshLanguage] for what this does and doesn't touch. */
+    /** Anyone with a `remoteId`-linked language can pull later server-side changes into their
+     * existing local copy — see [ContentSyncRepository.refreshLanguage] for what this does and
+     * doesn't touch. */
     fun refresh(languageId: Long) {
         if (_uiState.value.busy) return
         _uiState.value = _uiState.value.copy(busy = true, message = null)
@@ -119,7 +81,7 @@ class LanguageMenuViewModel @Inject constructor(
         }
     }
 
-    /** Regular user: downloads an admin-published language into their own local copy, then opens it. */
+    /** Downloads an admin-published language into this profile's own local copy, then opens it. */
     fun download(remoteLanguageId: String) {
         if (_uiState.value.busy) return
         _uiState.value = _uiState.value.copy(busy = true, message = null)

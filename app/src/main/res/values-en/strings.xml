@@ -54,6 +54,10 @@
     <string name="continue_learning">Continue learning</string>
     <string name="choose_other_section">Choose another section</string>
     <string name="repeat_words">Repeat words</string>
+    <string name="system_learning">Guided course</string>
+    <string name="system_learning_subtitle">Not ready yet</string>
+    <string name="self_study">Self-study</string>
+    <string name="own_material">Your own material</string>
 
     <!-- Topic actions -->
     <string name="learn_rules">Rules</string>
@@ -76,8 +80,6 @@
     <string name="create_profile">Create profile</string>
     <string name="profile_name_label">Profile name</string>
     <string name="change_learning_language">Change learning language</string>
-    <string name="admin_badge_yes">Administrator: yes</string>
-    <string name="admin_badge_no">Administrator: no</string>
     <string name="add_new_profile">Create a new profile</string>
     <string name="logout">Log out</string>
     <string name="delete_all_data">Delete all data</string>

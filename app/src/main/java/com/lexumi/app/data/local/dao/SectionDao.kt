@@ -9,6 +9,15 @@ interface SectionDao {
     @Query("SELECT * FROM sections WHERE languageId = :languageId ORDER BY position ASC, id ASC")
     fun observeForLanguage(languageId: Long): Flow<List<SectionEntity>>
 
+    /** Sections synced from an admin-published language ("Самостійне вивчення") — always
+     * read-only on Android now (editing admin content is a web-panel-only job). */
+    @Query("SELECT * FROM sections WHERE languageId = :languageId AND remoteId IS NOT NULL ORDER BY position ASC, id ASC")
+    fun observeAdminSections(languageId: Long): Flow<List<SectionEntity>>
+
+    /** Sections the user created themselves ("Власний матеріал") — never touched by sync. */
+    @Query("SELECT * FROM sections WHERE languageId = :languageId AND remoteId IS NULL ORDER BY position ASC, id ASC")
+    fun observePersonalSections(languageId: Long): Flow<List<SectionEntity>>
+
     @Query("SELECT * FROM sections WHERE languageId = :languageId ORDER BY position ASC, id ASC")
     suspend fun getForLanguage(languageId: Long): List<SectionEntity>
 

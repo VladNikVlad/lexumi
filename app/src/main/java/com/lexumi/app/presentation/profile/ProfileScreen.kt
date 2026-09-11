@@ -35,7 +35,6 @@ fun ProfileScreen(
     val context = LocalContext.current
     val currentProfileId by viewModel.currentProfileId.collectAsState()
     val profiles by viewModel.profiles.collectAsState()
-    val uiState by viewModel.uiState.collectAsState()
     val currentProfile = profiles.find { it.id == currentProfileId }
 
     var pendingName by remember { mutableStateOf<String?>(null) }
@@ -67,16 +66,6 @@ fun ProfileScreen(
                         label = stringResource(R.string.profile_name_label),
                         modifier = Modifier.weight(1f),
                     )
-                }
-            }
-
-            if (uiState.isAdmin) {
-                ProfileSection(title = null) {
-                    Text(stringResource(R.string.admin_badge_yes), style = MaterialTheme.typography.titleMedium)
-                }
-            } else {
-                ProfileSection(title = null) {
-                    Text(stringResource(R.string.admin_badge_no), style = MaterialTheme.typography.bodyMedium)
                 }
             }
 

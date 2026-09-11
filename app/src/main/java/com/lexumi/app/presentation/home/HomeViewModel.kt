@@ -5,8 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lexumi.app.data.datastore.LastSession
 import com.lexumi.app.data.datastore.UserPreferences
+import com.lexumi.app.data.network.ConnectivityChecker
+import com.lexumi.app.data.sync.ContentSyncRepository
 import com.lexumi.app.domain.repository.TopicRepository
-import com.lexumi.app.domain.usecase.IsLanguageEditableUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +19,8 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     private val prefs: UserPreferences,
     private val topicRepository: TopicRepository,
-    private val isLanguageEditable: IsLanguageEditableUseCase,
+    private val syncRepository: ContentSyncRepository,
+    private val connectivityChecker: ConnectivityChecker,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -26,11 +28,6 @@ class HomeViewModel @Inject constructor(
 
     private val _lastSession = MutableStateFlow<LastSession?>(null)
     val lastSession: StateFlow<LastSession?> = _lastSession
-
-    // Fail-closed: hidden until the async check resolves, not shown-then-hidden — a
-    // default of `true` would flash the "add" button (however briefly) for a non-admin too.
-    private val _canEdit = MutableStateFlow(false)
-    val canEdit: StateFlow<Boolean> = _canEdit
 
     init {
         viewModelScope.launch {
@@ -46,6 +43,18 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
-        viewModelScope.launch { _canEdit.value = isLanguageEditable(languageId) }
+    }
+
+    /** Best-effort background refresh, triggered only when the user actually heads into
+     * "Самостійне вивчення" — not at language selection, since picking a language doesn't imply
+     * the user wants server content at all (they might only be here for "Власний матеріал",
+     * which never needs a network call). Errors are swallowed; this isn't a user-facing action —
+     * the "Оновити" button on LanguageMenuScreen stays available for a deliberate retry. */
+    fun enterSelfStudy() {
+        viewModelScope.launch {
+            if (connectivityChecker.isOnline()) {
+                runCatching { syncRepository.refreshLanguage(languageId) }
+            }
+        }
     }
 }

@@ -23,7 +23,6 @@ fun SectionsScreen(
     viewModel: SectionsViewModel = hiltViewModel(),
 ) {
     val sections by viewModel.sections.collectAsState()
-    val canEdit by viewModel.canEdit.collectAsState()
 
     GradientBackground {
         BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
@@ -31,8 +30,8 @@ fun SectionsScreen(
             items = sections.map { PickableItem(it.id, it.name) },
             title = stringResource(R.string.choose_section),
             onItemClick = onSectionChosen,
-            addLabel = if (canEdit) stringResource(R.string.add_section) else null,
-            onAddClick = if (canEdit) onAddSection else null,
+            addLabel = if (viewModel.canEdit) stringResource(R.string.add_section) else null,
+            onAddClick = if (viewModel.canEdit) onAddSection else null,
         )
     }
 }

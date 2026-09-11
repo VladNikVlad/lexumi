@@ -68,6 +68,10 @@ class LanguageRepositoryImpl @Inject constructor(private val dao: LanguageDao) :
 class SectionRepositoryImpl @Inject constructor(private val dao: SectionDao) : SectionRepository {
     override fun observeSections(languageId: Long): Flow<List<Section>> =
         dao.observeForLanguage(languageId).map { list -> list.map { it.toDomain() } }
+    override fun observeAdminSections(languageId: Long): Flow<List<Section>> =
+        dao.observeAdminSections(languageId).map { list -> list.map { it.toDomain() } }
+    override fun observePersonalSections(languageId: Long): Flow<List<Section>> =
+        dao.observePersonalSections(languageId).map { list -> list.map { it.toDomain() } }
     override suspend fun getSection(id: Long): Section? = dao.getById(id)?.toDomain()
     override suspend fun exists(languageId: Long, name: String): Boolean = dao.countByName(languageId, name) > 0
     override suspend fun addSection(languageId: Long, name: String): Long {
