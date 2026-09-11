@@ -27,7 +27,9 @@ class HomeViewModel @Inject constructor(
     private val _lastSession = MutableStateFlow<LastSession?>(null)
     val lastSession: StateFlow<LastSession?> = _lastSession
 
-    private val _canEdit = MutableStateFlow(true)
+    // Fail-closed: hidden until the async check resolves, not shown-then-hidden — a
+    // default of `true` would flash the "add" button (however briefly) for a non-admin too.
+    private val _canEdit = MutableStateFlow(false)
     val canEdit: StateFlow<Boolean> = _canEdit
 
     init {

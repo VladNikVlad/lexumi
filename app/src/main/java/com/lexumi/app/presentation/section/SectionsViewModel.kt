@@ -26,7 +26,8 @@ class SectionsViewModel @Inject constructor(
     val sections: StateFlow<List<Section>> = sectionRepository.observeSections(languageId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _canEdit = MutableStateFlow(true)
+    // Fail-closed: hidden until the async check resolves — see HomeViewModel for why.
+    private val _canEdit = MutableStateFlow(false)
     val canEdit: StateFlow<Boolean> = _canEdit
 
     init {

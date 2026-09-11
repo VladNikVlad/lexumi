@@ -42,7 +42,8 @@ class TopicActionViewModel @Inject constructor(
     private val _topicName = MutableStateFlow("")
     val topicName: StateFlow<String> = _topicName
 
-    private val _canEdit = MutableStateFlow(true)
+    // Fail-closed: hidden until the async check resolves — see HomeViewModel for why.
+    private val _canEdit = MutableStateFlow(false)
     val canEdit: StateFlow<Boolean> = _canEdit
 
     init {
