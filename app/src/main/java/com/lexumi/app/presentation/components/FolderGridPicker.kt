@@ -59,11 +59,13 @@ data class PickableItem(val id: Long, val name: String)
 fun FolderGridPicker(
     items: List<PickableItem>,
     title: String,
-    addLabel: String,
     onItemClick: (Long) -> Unit,
-    onAddClick: () -> Unit,
     modifier: Modifier = Modifier,
     onReorder: ((List<Long>) -> Unit)? = null,
+    // Null hides the "add" tile entirely — e.g. read-only browsing of admin-published content
+    // (see IsLanguageEditableUseCase), where there's nothing for the user to add here.
+    addLabel: String? = null,
+    onAddClick: (() -> Unit)? = null,
 ) {
     var draggingId by remember { mutableStateOf<Long?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
@@ -157,15 +159,17 @@ fun FolderGridPicker(
             }
         }
 
-        PillActionButton(
-            text = addLabel,
-            icon = Icons.Filled.Add,
-            onClick = onAddClick,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 25.dp),
-        )
+        if (addLabel != null && onAddClick != null) {
+            PillActionButton(
+                text = addLabel,
+                icon = Icons.Filled.Add,
+                onClick = onAddClick,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 25.dp),
+            )
+        }
     }
 }
 

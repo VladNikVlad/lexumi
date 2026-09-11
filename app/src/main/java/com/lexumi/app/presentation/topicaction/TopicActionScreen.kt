@@ -48,6 +48,7 @@ fun TopicActionScreen(
 ) {
     val availability by viewModel.availability.collectAsState()
     val topicName by viewModel.topicName.collectAsState()
+    val canEdit by viewModel.canEdit.collectAsState()
 
     GradientBackground {
         BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
@@ -73,8 +74,10 @@ fun TopicActionScreen(
             if (availability.hasImages) PillActionButton(text = stringResource(R.string.image_tests), icon = Icons.Filled.ViewModule, onClick = onImageTests, modifier = spacing)
             if (availability.hasSentences) PillActionButton(text = stringResource(R.string.learn_sentences), icon = Icons.Filled.TextFields, onClick = onSentences, modifier = spacing)
 
-            androidx.compose.material3.TextButton(onClick = onAddContent) {
-                androidx.compose.material3.Text(stringResource(R.string.add_more_content))
+            if (canEdit) {
+                androidx.compose.material3.TextButton(onClick = onAddContent) {
+                    androidx.compose.material3.Text(stringResource(R.string.add_more_content))
+                }
             }
         }
     }

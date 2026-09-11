@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.lexumi.app.data.datastore.LastSession
 import com.lexumi.app.data.datastore.UserPreferences
 import com.lexumi.app.domain.repository.TopicRepository
+import com.lexumi.app.domain.usecase.IsLanguageEditableUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +18,7 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     private val prefs: UserPreferences,
     private val topicRepository: TopicRepository,
+    private val isLanguageEditable: IsLanguageEditableUseCase,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -24,6 +26,9 @@ class HomeViewModel @Inject constructor(
 
     private val _lastSession = MutableStateFlow<LastSession?>(null)
     val lastSession: StateFlow<LastSession?> = _lastSession
+
+    private val _canEdit = MutableStateFlow(true)
+    val canEdit: StateFlow<Boolean> = _canEdit
 
     init {
         viewModelScope.launch {
@@ -39,5 +44,6 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
+        viewModelScope.launch { _canEdit.value = isLanguageEditable(languageId) }
     }
 }

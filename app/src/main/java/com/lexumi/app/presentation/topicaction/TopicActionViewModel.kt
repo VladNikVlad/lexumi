@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lexumi.app.domain.repository.*
+import com.lexumi.app.domain.usecase.IsLanguageEditableUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,6 +32,8 @@ class TopicActionViewModel @Inject constructor(
     storyRepository: StoryRepository,
     imageContentRepository: ImageContentRepository,
     topicRepository: TopicRepository,
+    sectionRepository: SectionRepository,
+    isLanguageEditable: IsLanguageEditableUseCase,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -39,9 +42,15 @@ class TopicActionViewModel @Inject constructor(
     private val _topicName = MutableStateFlow("")
     val topicName: StateFlow<String> = _topicName
 
+    private val _canEdit = MutableStateFlow(true)
+    val canEdit: StateFlow<Boolean> = _canEdit
+
     init {
         viewModelScope.launch {
-            _topicName.value = topicRepository.getTopic(topicId)?.name.orEmpty()
+            val topic = topicRepository.getTopic(topicId)
+            _topicName.value = topic?.name.orEmpty()
+            val languageId = topic?.let { sectionRepository.getSection(it.sectionId)?.languageId }
+            _canEdit.value = languageId == null || isLanguageEditable(languageId)
         }
     }
 

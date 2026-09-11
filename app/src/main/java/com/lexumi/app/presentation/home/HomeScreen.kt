@@ -37,6 +37,7 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val lastSession by viewModel.lastSession.collectAsState()
+    val canEdit by viewModel.canEdit.collectAsState()
 
     GradientBackground {
         SettingsIconButton(onClick = onSettings, modifier = Modifier.align(Alignment.TopEnd).padding(20.dp))
@@ -68,13 +69,18 @@ fun HomeScreen(
                     onClick = onLearn,
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
-                PillActionButton(
-                    text = stringResource(R.string.add_new_section),
-                    subtitle = stringResource(R.string.add_new_section_subtitle),
-                    icon = Icons.Filled.Add,
-                    onClick = onAddSection,
-                    modifier = Modifier.padding(bottom = 16.dp),
-                )
+                // Hidden for admin-published content a non-admin is just browsing — see
+                // IsLanguageEditableUseCase; adding sections is only meaningful for content the
+                // user actually owns (their own language, or the admin's own published one).
+                if (canEdit) {
+                    PillActionButton(
+                        text = stringResource(R.string.add_new_section),
+                        subtitle = stringResource(R.string.add_new_section_subtitle),
+                        icon = Icons.Filled.Add,
+                        onClick = onAddSection,
+                        modifier = Modifier.padding(bottom = 16.dp),
+                    )
+                }
                 PillActionButton(
                     text = stringResource(R.string.repeat_words),
                     icon = Icons.Filled.Autorenew,

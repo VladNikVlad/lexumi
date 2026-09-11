@@ -27,6 +27,7 @@ fun TopicsScreen(
     viewModel: TopicsViewModel = hiltViewModel(),
 ) {
     val topics by viewModel.topics.collectAsState()
+    val canEdit by viewModel.canEdit.collectAsState()
 
     GradientBackground {
         BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
@@ -34,10 +35,10 @@ fun TopicsScreen(
         FolderGridPicker(
             items = topics.map { PickableItem(it.id, it.name) },
             title = stringResource(R.string.choose_topic),
-            addLabel = stringResource(R.string.add_topic),
             onItemClick = onTopicChosen,
-            onAddClick = onAddTopic,
-            onReorder = viewModel::reorder,
+            onReorder = if (canEdit) viewModel::reorder else null,
+            addLabel = if (canEdit) stringResource(R.string.add_topic) else null,
+            onAddClick = if (canEdit) onAddTopic else null,
         )
     }
 }

@@ -3,6 +3,8 @@
 
     <!-- Video dialogues reference YouTube links; app content itself works offline -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Lets ConnectivityChecker ask "is there a network right now" before a background sync attempt -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- For the "say the word/sentence out loud" mastery practice -->

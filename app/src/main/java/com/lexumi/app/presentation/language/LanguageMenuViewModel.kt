@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lexumi.app.data.auth.AuthRepository
 import com.lexumi.app.data.datastore.UserPreferences
+import com.lexumi.app.data.network.ConnectivityChecker
 import com.lexumi.app.data.sync.ContentSyncRepository
 import com.lexumi.app.data.sync.DownloadableLanguage
 import com.lexumi.app.domain.model.Language
@@ -36,6 +37,7 @@ class LanguageMenuViewModel @Inject constructor(
     private val prefs: UserPreferences,
     private val authRepository: AuthRepository,
     private val syncRepository: ContentSyncRepository,
+    private val connectivityChecker: ConnectivityChecker,
 ) : ViewModel() {
 
     // Shared across all local profiles on this device (point 3 of the settings rework) —
@@ -70,6 +72,17 @@ class LanguageMenuViewModel @Inject constructor(
         viewModelScope.launch {
             prefs.setSelectedLanguage(languageId)
             _selected.value = languageId
+        }
+        // Best-effort background refresh, not a user-facing action — errors are swallowed and
+        // there's no `busy`/`message` update, so a slow or failed sync never blocks navigation or
+        // shows a confusing error for what the user didn't explicitly ask for. The manual
+        // "Оновити" button (`refresh`, above) stays available for a deliberate retry with visible
+        // feedback if this silently didn't work (e.g. no connectivity right now).
+        viewModelScope.launch {
+            val language = languageRepository.getLanguage(languageId) ?: return@launch
+            if (language.remoteId != null && connectivityChecker.isOnline()) {
+                runCatching { syncRepository.refreshLanguage(languageId) }
+            }
         }
     }
 
