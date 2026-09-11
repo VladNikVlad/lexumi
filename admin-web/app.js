@@ -157,14 +157,15 @@ async function renderLanguageDetail(languageId) {
         ${rules.map((r) => `
           <li>
             <strong>${escapeHtml(r.name)}</strong> — ${escapeHtml(truncate(r.text, 80))}
-            <button data-delete="${r.id}" class="danger">Видалити</button>
+            <button data-edit-item="${r.id}">Редагувати</button>
+            <button data-delete-item="${r.id}" class="danger">Видалити</button>
           </li>
         `).join('') || '<li class="hint">Ще немає правил.</li>'}
       </ul>
       <form id="add-rule-form">
         <input type="text" name="name" placeholder="Назва правила" required>
         <textarea name="text" placeholder="Текст правила" required></textarea>
-        <label class="file-label">Картинка (необов'язково) <input type="file" name="image" accept="image/*"></label>
+        <label class="file-label">Картинка (необов'язково, при редагуванні — лишити порожнім, щоб не міняти) <input type="file" name="image" accept="image/*"></label>
         <button type="submit">Додати правило</button>
       </form>
     </div>
@@ -181,19 +182,24 @@ async function renderLanguageDetail(languageId) {
     </div>
   `;
 
-  wireListActions($('#rule-list'), {
-    onDelete: async (id) => { if (confirm('Видалити правило?')) { await deleteRow('rules', id); renderLanguageDetail(languageId); } },
+  const ruleForm = makeEditableForm($('#add-rule-form'), {
+    addLabel: 'Додати правило',
+    fill: (r) => { $('#add-rule-form').name.value = r.name; $('#add-rule-form').text.value = r.text; },
   });
+  wireOwnerItemActions($('#rule-list'), 'rules', () => renderLanguageDetail(languageId), { ...ruleForm, rows: rules });
 
   $('#add-rule-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const file = fd.get('image');
     const imageData = file && file.size > 0 ? await compressImageToBase64(file) : null;
-    await insertRow('rules', {
-      owner_id: null, language_id: languageId, name: fd.get('name').trim(), text: fd.get('text').trim(),
-      image_data: imageData,
-    });
+    const patch = { name: fd.get('name').trim(), text: fd.get('text').trim() };
+    if (imageData !== null) patch.image_data = imageData;
+    if (ruleForm.editingId) {
+      await updateRow('rules', ruleForm.editingId, patch);
+    } else {
+      await insertRow('rules', { owner_id: null, language_id: languageId, image_data: null, ...patch });
+    }
     renderLanguageDetail(languageId);
   });
 
@@ -337,6 +343,7 @@ async function renderWordsTab(container, topicId, languageId) {
         if (!word) return '';
         const shown = link.translation_override || splitList(word.translations)[0] || '';
         return `<li><strong>${escapeHtml(word.term)}</strong> — ${escapeHtml(shown)}
+          <button data-edit-item="${word.id}">Редагувати</button>
           <button data-delete-link="${link.id}" data-word="${word.id}" class="danger">Видалити з теми</button></li>`;
       }).join('') || '<li class="hint">Ще немає слів у цій темі.</li>'}
     </ul>
@@ -349,12 +356,22 @@ async function renderWordsTab(container, topicId, languageId) {
   // Rule <select> is fetched async, so it's appended after the initial (synchronous) render.
   const form = document.getElementById('add-word-form');
   form.insertAdjacentHTML('beforeend', await ruleSelectHtml(languageId));
-  form.insertAdjacentHTML('beforeend', `<label class="file-label">Картинка (необов'язково) <input type="file" name="image" accept="image/*"></label><button type="submit">Додати слово</button>`);
+  form.insertAdjacentHTML('beforeend', `<label class="file-label">Картинка (необов'язково, при редагуванні — лишити порожнім, щоб не міняти) <input type="file" name="image" accept="image/*"></label><button type="submit">Додати слово</button>`);
 
   document.getElementById('add-translation-field').addEventListener('click', () => {
     document.getElementById('translations-fields').insertAdjacentHTML('beforeend',
       '<input type="text" name="translation" placeholder="Ще один варіант перекладу">');
   });
+
+  const wordForm = makeEditableForm(form, {
+    addLabel: 'Додати слово',
+    fill: (word) => {
+      form.term.value = word.term;
+      setTranslationFields('translations-fields', splitList(word.translations));
+      if (form.rule_id) form.rule_id.value = word.rule_id || '';
+    },
+  });
+  wireOwnerItemActions(container, 'words', () => renderWordsTab(container, topicId, languageId), { ...wordForm, rows: words });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -365,6 +382,14 @@ async function renderWordsTab(container, topicId, languageId) {
     const ruleId = fd.get('rule_id') || null;
     const file = fd.get('image');
     const imageData = file && file.size > 0 ? await compressImageToBase64(file) : null;
+
+    if (wordForm.editingId) {
+      const patch = { term, translations: joinList(translations), rule_id: ruleId };
+      if (imageData !== null) patch.image_data = imageData;
+      await updateRow('words', wordForm.editingId, patch);
+      renderWordsTab(container, topicId, languageId);
+      return;
+    }
 
     const existingWords = await listRows('words', { language_id: languageId, owner_id: null });
     let word = findExactCi(existingWords, 'term', term);
@@ -409,6 +434,7 @@ async function renderSentencesTab(container, topicId, languageId) {
         if (!sentence) return '';
         const shown = (link.translations_override ? splitList(link.translations_override) : splitList(sentence.translations)).join(' / ');
         return `<li><strong>${escapeHtml(sentence.text)}</strong> — ${escapeHtml(shown)}
+          <button data-edit-item="${sentence.id}">Редагувати</button>
           <button data-delete-link="${link.id}" data-word="${sentence.id}" class="danger">Видалити з теми</button></li>`;
       }).join('') || '<li class="hint">Ще немає речень у цій темі.</li>'}
     </ul>
@@ -426,6 +452,16 @@ async function renderSentencesTab(container, topicId, languageId) {
   });
 
   const form = document.getElementById('add-sentence-form');
+  const sentenceForm = makeEditableForm(form, {
+    addLabel: 'Додати речення',
+    fill: (sentence) => {
+      form.text.value = sentence.text;
+      setTranslationFields('sentence-translations-fields', splitList(sentence.translations));
+      setMultiSelectValues(form.rule_ids, splitRuleIds(sentence.rule_ids));
+    },
+  });
+  wireOwnerItemActions(container, 'sentences', () => renderSentencesTab(container, topicId, languageId), { ...sentenceForm, rows: sentences });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
@@ -433,6 +469,14 @@ async function renderSentencesTab(container, topicId, languageId) {
     const translations = fd.getAll('translation').map((t) => t.trim()).filter(Boolean);
     if (!text || translations.length === 0) return;
     const ruleIds = fd.getAll('rule_ids');
+
+    if (sentenceForm.editingId) {
+      await updateRow('sentences', sentenceForm.editingId, {
+        text, translations: joinList(translations), rule_ids: joinRuleIds(ruleIds),
+      });
+      renderSentencesTab(container, topicId, languageId);
+      return;
+    }
 
     const existingSentences = await listRows('sentences', { language_id: languageId, owner_id: null });
     let sentence = findExactCi(existingSentences, 'text', text);
@@ -478,18 +522,31 @@ async function renderVideosTab(container, topicId, languageId) {
       <button type="submit">Додати відео</button>
     </form>
   `;
+  const videoForm = makeEditableForm(document.getElementById('add-video-form'), {
+    addLabel: 'Додати відео',
+    fill: (v) => {
+      const form = document.getElementById('add-video-form');
+      form.name.value = v.name;
+      form.youtube_url.value = v.youtube_url;
+      form.original_text.value = v.original_text || '';
+      form.translation_text.value = v.translation_text || '';
+      setMultiSelectValues(form.rule_ids, splitRuleIds(v.rule_ids));
+    },
+  });
   document.getElementById('add-video-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const ruleIds = fd.getAll('rule_ids');
-    await insertRow('videos', {
-      owner_id: null, topic_id: topicId, name: fd.get('name').trim(), youtube_url: fd.get('youtube_url').trim(),
+    const patch = {
+      name: fd.get('name').trim(), youtube_url: fd.get('youtube_url').trim(),
       original_text: fd.get('original_text').trim() || null, translation_text: fd.get('translation_text').trim() || null,
       rule_ids: joinRuleIds(ruleIds),
-    });
+    };
+    if (videoForm.editingId) await updateRow('videos', videoForm.editingId, patch);
+    else await insertRow('videos', { owner_id: null, topic_id: topicId, ...patch });
     renderVideosTab(container, topicId, languageId);
   });
-  wireOwnerItemActions(container, 'videos', () => renderVideosTab(container, topicId, languageId));
+  wireOwnerItemActions(container, 'videos', () => renderVideosTab(container, topicId, languageId), { ...videoForm, rows: videos });
   wireQuestionForms(container, 'video_id');
 }
 
@@ -498,6 +555,7 @@ function videoItemHtml(video) {
     <div class="item-block">
       <div class="item-header">
         <strong>${escapeHtml(video.name)}</strong> — <a href="${escapeAttr(video.youtube_url)}" target="_blank">YouTube</a>
+        <button data-edit-item="${video.id}">Редагувати</button>
         <button data-delete-item="${video.id}" class="danger">Видалити</button>
       </div>
       ${questionsSectionHtml(video.id, 'video_id')}
@@ -512,6 +570,7 @@ async function renderStoriesTab(container, topicId, languageId) {
   container.innerHTML = `
     <ul class="list" id="story-list">
       ${stories.map((s) => `<li><strong>${escapeHtml(s.name)}</strong> — ${escapeHtml(truncate(s.text, 80))}
+        <button data-edit-item="${s.id}">Редагувати</button>
         <button data-delete-item="${s.id}" class="danger">Видалити</button></li>`).join('') || '<li class="hint">Ще немає історій.</li>'}
     </ul>
     <form id="add-story-form">
@@ -522,16 +581,28 @@ async function renderStoriesTab(container, topicId, languageId) {
       <button type="submit">Додати історію</button>
     </form>
   `;
+  const storyForm = makeEditableForm(document.getElementById('add-story-form'), {
+    addLabel: 'Додати історію',
+    fill: (s) => {
+      const form = document.getElementById('add-story-form');
+      form.name.value = s.name;
+      form.text.value = s.text;
+      form.translation.value = s.translation || '';
+      setMultiSelectValues(form.rule_ids, splitRuleIds(s.rule_ids));
+    },
+  });
   document.getElementById('add-story-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    await insertRow('stories', {
-      owner_id: null, topic_id: topicId, name: fd.get('name').trim(), text: fd.get('text').trim(),
+    const patch = {
+      name: fd.get('name').trim(), text: fd.get('text').trim(),
       translation: fd.get('translation').trim() || null, rule_ids: joinRuleIds(fd.getAll('rule_ids')),
-    });
+    };
+    if (storyForm.editingId) await updateRow('stories', storyForm.editingId, patch);
+    else await insertRow('stories', { owner_id: null, topic_id: topicId, ...patch });
     renderStoriesTab(container, topicId, languageId);
   });
-  wireOwnerItemActions(container, 'stories', () => renderStoriesTab(container, topicId, languageId));
+  wireOwnerItemActions(container, 'stories', () => renderStoriesTab(container, topicId, languageId), { ...storyForm, rows: stories });
 }
 
 // -- image cards --
@@ -543,30 +614,45 @@ async function renderImagesTab(container, topicId) {
       ${images.map((img) => `<li>
           <img class="thumb" src="data:image/jpeg;base64,${img.image_data}" alt="">
           <strong>${escapeHtml(img.name)}</strong> — ${escapeHtml(img.translation)}
+          <button data-edit-item="${img.id}">Редагувати</button>
           <button data-delete-item="${img.id}" class="danger">Видалити</button>
         </li>`).join('') || '<li class="hint">Ще немає карток.</li>'}
     </ul>
     <form id="add-image-form">
       <input type="text" name="name" placeholder="Назва" required>
       <input type="text" name="translation" placeholder="Переклад" required>
-      <label class="file-label">Картинка <input type="file" name="image" accept="image/*" required></label>
+      <label class="file-label">Картинка (при редагуванні — лишити порожнім, щоб не міняти) <input type="file" name="image" accept="image/*"></label>
       <button type="submit">Додати картку</button>
     </form>
   `;
+  const imageForm = makeEditableForm(document.getElementById('add-image-form'), {
+    addLabel: 'Додати картку',
+    fill: (img) => {
+      const form = document.getElementById('add-image-form');
+      form.name.value = img.name;
+      form.translation.value = img.translation;
+    },
+  });
   document.getElementById('add-image-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const file = fd.get('image');
-    if (!file || file.size === 0) return;
-    const imageData = await compressImageToBase64(file);
-    if (!imageData) { alert('Не вдалося обробити картинку'); return; }
-    await insertRow('image_content', {
-      owner_id: null, topic_id: topicId, name: fd.get('name').trim(), translation: fd.get('translation').trim(),
-      image_data: imageData,
-    });
+    const imageData = file && file.size > 0 ? await compressImageToBase64(file) : null;
+    if (imageForm.editingId) {
+      const patch = { name: fd.get('name').trim(), translation: fd.get('translation').trim() };
+      if (imageData !== null) patch.image_data = imageData;
+      await updateRow('image_content', imageForm.editingId, patch);
+    } else {
+      if (!file || file.size === 0) return;
+      if (!imageData) { alert('Не вдалося обробити картинку'); return; }
+      await insertRow('image_content', {
+        owner_id: null, topic_id: topicId, name: fd.get('name').trim(), translation: fd.get('translation').trim(),
+        image_data: imageData,
+      });
+    }
     renderImagesTab(container, topicId);
   });
-  wireOwnerItemActions(container, 'image_content', () => renderImagesTab(container, topicId));
+  wireOwnerItemActions(container, 'image_content', () => renderImagesTab(container, topicId), { ...imageForm, rows: images });
 }
 
 // -- audio dialogs (+ nested test questions) --
@@ -580,29 +666,51 @@ async function renderAudioTab(container, topicId, languageId) {
     <form id="add-audio-form">
       <input type="text" name="name" placeholder="Назва" required>
       <textarea name="translation_text" placeholder="Переклад (необов'язково)"></textarea>
-      <label class="file-label">Аудіофайл <input type="file" name="audio" accept="audio/*" required></label>
+      <label class="file-label">Аудіофайл (при редагуванні — лишити порожнім, щоб не міняти) <input type="file" name="audio" accept="audio/*"></label>
       ${await ruleSelectHtml(languageId, true)}
       <button type="submit">Додати аудіодіалог</button>
     </form>
     <p id="audio-status"></p>
   `;
+  const audioForm = makeEditableForm(document.getElementById('add-audio-form'), {
+    addLabel: 'Додати аудіодіалог',
+    fill: (d) => {
+      const form = document.getElementById('add-audio-form');
+      form.name.value = d.name;
+      form.translation_text.value = d.translation_text || '';
+      setMultiSelectValues(form.rule_ids, splitRuleIds(d.rule_ids));
+    },
+  });
   document.getElementById('add-audio-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const file = fd.get('audio');
-    if (!file || file.size === 0) return;
     const statusEl = document.getElementById('audio-status');
-    statusEl.textContent = 'Завантаження...';
-    const row = await insertRow('audio_dialogs', {
-      owner_id: null, topic_id: topicId, name: fd.get('name').trim(),
-      translation_text: fd.get('translation_text').trim() || null, rule_ids: joinRuleIds(fd.getAll('rule_ids')),
-      audio_path: `dialogs/${crypto.randomUUID()}.mp3`,
-    });
-    const { error } = await supabaseClient.storage.from('audio-dialogs').upload(row.audio_path, file);
-    if (error) { statusEl.textContent = `Помилка завантаження файлу: ${error.message}`; return; }
+    const name = fd.get('name').trim();
+    const translationText = fd.get('translation_text').trim() || null;
+    const ruleIds = joinRuleIds(fd.getAll('rule_ids'));
+
+    if (audioForm.editingId) {
+      await updateRow('audio_dialogs', audioForm.editingId, { name, translation_text: translationText, rule_ids: ruleIds });
+      if (file && file.size > 0) {
+        statusEl.textContent = 'Завантаження нового файлу...';
+        const row = await listRows('audio_dialogs', { id: audioForm.editingId }).then((rows) => rows[0]);
+        const { error } = await supabaseClient.storage.from('audio-dialogs').upload(row.audio_path, file, { upsert: true });
+        if (error) { statusEl.textContent = `Помилка завантаження файлу: ${error.message}`; return; }
+      }
+    } else {
+      if (!file || file.size === 0) return;
+      statusEl.textContent = 'Завантаження...';
+      const row = await insertRow('audio_dialogs', {
+        owner_id: null, topic_id: topicId, name, translation_text: translationText, rule_ids: ruleIds,
+        audio_path: `dialogs/${crypto.randomUUID()}.mp3`,
+      });
+      const { error } = await supabaseClient.storage.from('audio-dialogs').upload(row.audio_path, file);
+      if (error) { statusEl.textContent = `Помилка завантаження файлу: ${error.message}`; return; }
+    }
     renderAudioTab(container, topicId, languageId);
   });
-  wireOwnerItemActions(container, 'audio_dialogs', () => renderAudioTab(container, topicId, languageId));
+  wireOwnerItemActions(container, 'audio_dialogs', () => renderAudioTab(container, topicId, languageId), { ...audioForm, rows: dialogs });
   wireQuestionForms(container, 'audio_dialog_id');
 }
 
@@ -611,6 +719,7 @@ function audioItemHtml(dialog) {
     <div class="item-block">
       <div class="item-header">
         <strong>${escapeHtml(dialog.name)}</strong>
+        <button data-edit-item="${dialog.id}">Редагувати</button>
         <button data-delete-item="${dialog.id}" class="danger">Видалити</button>
       </div>
       ${questionsSectionHtml(dialog.id, 'audio_dialog_id')}
@@ -638,7 +747,7 @@ function questionsSectionHtml(ownerId, ownerField) {
   `;
 }
 
-async function loadQuestionsInto(ownerId, ownerField) {
+async function loadQuestionsInto(ownerId, ownerField, editable) {
   const el = document.getElementById(`questions-${ownerId}`);
   if (!el) return;
   const questions = await listRows('test_questions', { [ownerField]: ownerId, owner_id: null });
@@ -646,41 +755,79 @@ async function loadQuestionsInto(ownerId, ownerField) {
     <ul class="list">
       ${questions.map((q) => `<li>${escapeHtml(q.question_text)}
         (${q.answer_type === 'TRUE_FALSE' ? (q.correct_boolean ? 'Так' : 'Ні') : escapeHtml((q.acceptable_answers || '').split(',')[0] || '')})
+        <button data-edit-question="${q.id}">Редагувати</button>
         <button data-delete-question="${q.id}" class="danger">Видалити</button></li>`).join('') || '<li class="hint">Ще немає питань.</li>'}
     </ul>
   `;
   el.querySelectorAll('[data-delete-question]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       await deleteRow('test_questions', btn.dataset.deleteQuestion);
-      loadQuestionsInto(ownerId, ownerField);
+      loadQuestionsInto(ownerId, ownerField, editable);
     });
   });
+  if (editable) {
+    el.querySelectorAll('[data-edit-question]').forEach((btn) => {
+      btn.addEventListener('click', () => editable.start(questions.find((q) => String(q.id) === btn.dataset.editQuestion)));
+    });
+  }
 }
 
 function wireQuestionForms(container, ownerField) {
-  container.querySelectorAll('.questions').forEach((box) => loadQuestionsInto(box.dataset.owner, box.dataset.ownerField));
   container.querySelectorAll('.add-question-form').forEach((form) => {
+    const editable = makeEditableForm(form, {
+      addLabel: 'Додати питання',
+      fill: (q) => {
+        form.question_text.value = q.question_text;
+        form.answer_type.value = q.answer_type;
+        form.acceptable_answers.value = q.acceptable_answers || '';
+        form.correct_boolean.checked = !!q.correct_boolean;
+      },
+    });
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(form);
       const answerType = fd.get('answer_type');
-      await insertRow('test_questions', {
-        owner_id: null,
-        [form.dataset.ownerField]: form.dataset.owner,
+      const patch = {
         question_text: fd.get('question_text').trim(),
         answer_type: answerType,
         correct_boolean: answerType === 'TRUE_FALSE' ? fd.get('correct_boolean') === 'on' : null,
         acceptable_answers: answerType === 'EXACT_TEXT' ? (fd.get('acceptable_answers').trim() || null) : null,
-      });
-      loadQuestionsInto(form.dataset.owner, form.dataset.ownerField);
-      form.reset();
+      };
+      if (editable.editingId) {
+        await updateRow('test_questions', editable.editingId, patch);
+      } else {
+        await insertRow('test_questions', { owner_id: null, [form.dataset.ownerField]: form.dataset.owner, ...patch });
+      }
+      editable.stop();
+      loadQuestionsInto(form.dataset.owner, form.dataset.ownerField, editable);
     });
+    loadQuestionsInto(form.dataset.owner, form.dataset.ownerField, editable);
   });
 }
 
 // ---------- shared small helpers ----------
 
 function $(sel) { return document.querySelector(sel); }
+
+/** Replaces the repeatable translation `<input>`s inside #[fieldsId] with one per entry in
+ * [values] (always at least one, even if [values] is empty) — used both for the words/sentences
+ * "+ Ще один варіант перекладу" add flow and to pre-fill that same list when editing. */
+function setTranslationFields(fieldsId, values) {
+  const box = document.getElementById(fieldsId);
+  const list = values.length ? values : [''];
+  box.innerHTML = list.map((v, i) =>
+    `<input type="text" name="translation" placeholder="${i === 0 ? 'Переклад' : 'Ще один варіант перекладу'}" value="${escapeAttr(v)}" ${i === 0 ? 'required' : ''}>`
+  ).join('');
+}
+
+/** Marks the matching <option>s selected in a multi-select `rule_ids` field when entering edit
+ * mode — no-op if the select doesn't exist (ruleSelectHtml renders nothing when the language has
+ * no rules yet). */
+function setMultiSelectValues(selectEl, ids) {
+  if (!selectEl) return;
+  const idSet = new Set(ids);
+  [...selectEl.options].forEach((opt) => { opt.selected = idSet.has(opt.value); });
+}
 
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -713,7 +860,7 @@ function wireDeleteLinkButtons(container, handler) {
   });
 }
 
-function wireOwnerItemActions(container, table, onChanged) {
+function wireOwnerItemActions(container, table, onChanged, editable) {
   container.querySelectorAll('[data-delete-item]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (!confirm('Видалити?')) return;
@@ -721,4 +868,45 @@ function wireOwnerItemActions(container, table, onChanged) {
       onChanged();
     });
   });
+  if (editable) {
+    container.querySelectorAll('[data-edit-item]').forEach((btn) => {
+      btn.addEventListener('click', () => editable.start(editable.rows.find((r) => String(r.id) === btn.dataset.editItem)));
+    });
+  }
+}
+
+/** Wires one <form> to serve as both "add new" and "edit existing" for a content tab — the same
+ * fields either way, just insert vs update on submit. `fill(row)` populates the form from an
+ * existing row when entering edit mode. Returns `{ start(row), stop(), editingId }` — the tab's
+ * own submit handler checks `.editingId` to decide insert vs update, and calls `.stop()` after
+ * either succeeds so the form goes back to "add" mode. */
+function makeEditableForm(form, { fill, addLabel = 'Додати', editLabel = 'Зберегти зміни' }) {
+  let editingId = null;
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Скасувати редагування';
+  cancelBtn.hidden = true;
+  form.appendChild(cancelBtn);
+
+  function stop() {
+    editingId = null;
+    form.reset();
+    submitBtn.textContent = addLabel;
+    cancelBtn.hidden = true;
+  }
+  cancelBtn.addEventListener('click', stop);
+
+  return {
+    start(row) {
+      if (!row) return;
+      editingId = row.id;
+      fill(row);
+      submitBtn.textContent = editLabel;
+      cancelBtn.hidden = false;
+      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+    stop,
+    get editingId() { return editingId; },
+  };
 }
