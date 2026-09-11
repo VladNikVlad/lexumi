@@ -52,6 +52,14 @@ private const val AUDIO_BUCKET = "audio-dialogs"
 // `translations`/`acceptable_answers` are stored as a single text column, joined with the same
 // unit-separator () as the local Room `Converters.fromStringList`; `rule_ids` is a plain
 // comma-joined list of remote rule uuids (uuids never contain a comma).
+//
+// The "which language/section/topic this belongs to" fields (languageId/sectionId/topicId)
+// default to "" even though the column is NOT NULL on the server: when reading rows back
+// (downloadLanguage/refreshLanguage), the parent is already known from the query's own filter,
+// so it's deliberately left out of the `select(Columns.list(...))` call — with no default,
+// kotlinx.serialization would fail to decode every row ("Field '...' is required"). Writing a
+// row (publishX) always passes the real value explicitly, so the default is never actually used
+// for an insert/update.
 
 private const val LIST_SEPARATOR = "\u001F"
 
@@ -67,7 +75,7 @@ private data class RemoteLanguageRow(
 private data class RemoteSectionRow(
     val id: String? = null,
     @SerialName("owner_id") val ownerId: String? = null,
-    @SerialName("language_id") val languageId: String,
+    @SerialName("language_id") val languageId: String = "",
     val name: String,
     val position: Int,
 )
@@ -76,7 +84,7 @@ private data class RemoteSectionRow(
 private data class RemoteTopicRow(
     val id: String? = null,
     @SerialName("owner_id") val ownerId: String? = null,
-    @SerialName("section_id") val sectionId: String,
+    @SerialName("section_id") val sectionId: String = "",
     val name: String,
     val position: Int,
 )
@@ -87,7 +95,7 @@ private data class RemoteTopicRow(
 private data class RemoteWordRow(
     val id: String? = null,
     @SerialName("owner_id") val ownerId: String? = null,
-    @SerialName("language_id") val languageId: String,
+    @SerialName("language_id") val languageId: String = "",
     val term: String,
     val translations: String,
     @SerialName("rule_id") val ruleId: String? = null,
@@ -98,7 +106,7 @@ private data class RemoteWordRow(
 private data class RemoteTopicWordRow(
     val id: String? = null,
     @SerialName("owner_id") val ownerId: String? = null,
-    @SerialName("topic_id") val topicId: String,
+    @SerialName("topic_id") val topicId: String = "",
     @SerialName("word_id") val wordId: String,
     @SerialName("translation_override") val translationOverride: String? = null,
     val position: Int = 0,
@@ -108,7 +116,7 @@ private data class RemoteTopicWordRow(
 private data class RemoteRuleRow(
     val id: String? = null,
     @SerialName("owner_id") val ownerId: String? = null,
-    @SerialName("language_id") val languageId: String,
+    @SerialName("language_id") val languageId: String = "",
     val name: String,
     val text: String,
     @SerialName("image_data") val imageData: String? = null,
@@ -120,7 +128,7 @@ private data class RemoteRuleRow(
 private data class RemoteImageContentRow(
     val id: String? = null,
     @SerialName("owner_id") val ownerId: String? = null,
-    @SerialName("topic_id") val topicId: String,
+    @SerialName("topic_id") val topicId: String = "",
     val name: String,
     val translation: String,
     @SerialName("image_data") val imageData: String,
@@ -133,7 +141,7 @@ private data class RemoteImageContentRow(
 private data class RemoteSentenceRow(
     val id: String? = null,
     @SerialName("owner_id") val ownerId: String? = null,
-    @SerialName("language_id") val languageId: String,
+    @SerialName("language_id") val languageId: String = "",
     val text: String,
     val translations: String,
     @SerialName("rule_ids") val ruleIds: String? = null,
@@ -143,7 +151,7 @@ private data class RemoteSentenceRow(
 private data class RemoteTopicSentenceRow(
     val id: String? = null,
     @SerialName("owner_id") val ownerId: String? = null,
-    @SerialName("topic_id") val topicId: String,
+    @SerialName("topic_id") val topicId: String = "",
     @SerialName("sentence_id") val sentenceId: String,
     @SerialName("translations_override") val translationsOverride: String? = null,
     val position: Int = 0,
@@ -156,7 +164,7 @@ private data class RemoteTopicSentenceRow(
 private data class RemoteVideoRow(
     val id: String? = null,
     @SerialName("owner_id") val ownerId: String? = null,
-    @SerialName("topic_id") val topicId: String,
+    @SerialName("topic_id") val topicId: String = "",
     val name: String,
     @SerialName("youtube_url") val youtubeUrl: String,
     @SerialName("original_text") val originalText: String? = null,
@@ -168,7 +176,7 @@ private data class RemoteVideoRow(
 private data class RemoteStoryRow(
     val id: String? = null,
     @SerialName("owner_id") val ownerId: String? = null,
-    @SerialName("topic_id") val topicId: String,
+    @SerialName("topic_id") val topicId: String = "",
     val name: String,
     val text: String,
     val translation: String? = null,
@@ -195,7 +203,7 @@ private data class RemoteTestQuestionRow(
 private data class RemoteAudioDialogRow(
     val id: String? = null,
     @SerialName("owner_id") val ownerId: String? = null,
-    @SerialName("topic_id") val topicId: String,
+    @SerialName("topic_id") val topicId: String = "",
     val name: String,
     @SerialName("translation_text") val translationText: String? = null,
     @SerialName("rule_ids") val ruleIds: String? = null,
