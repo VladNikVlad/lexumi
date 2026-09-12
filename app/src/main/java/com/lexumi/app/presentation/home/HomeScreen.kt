@@ -13,6 +13,8 @@ import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,6 +42,7 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val lastSession by viewModel.lastSession.collectAsState()
+    val syncError by viewModel.syncError.collectAsState()
     // "Продовжити навчання" is offered first if there's a saved session, but the 3 mode buttons
     // should still be reachable from there without a real navigation — this just reveals them
     // in place, matching how "Вибрати інший розділ" always used to work.
@@ -94,6 +97,11 @@ fun HomeScreen(
                     icon = Icons.Filled.Autorenew,
                     onClick = onRepeatWords,
                 )
+            }
+
+            syncError?.let {
+                Spacer(Modifier.height(16.dp))
+                Text(it, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }

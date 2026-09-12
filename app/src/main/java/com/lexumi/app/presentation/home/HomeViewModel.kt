@@ -15,6 +15,13 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Postgrest/ktor exception messages can include the full failed HTTP request for debugging —
+ * headers and all, which means a live `Authorization: Bearer <token>` ends up in this string.
+ * Never show that in a user-facing error message; cut it off at the first header dump. Mirrors
+ * the identical helper in LanguageMenuViewModel.kt. */
+private fun sanitizeSyncError(message: String?): String? =
+    message?.substringBefore("Headers:")?.trim()
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val prefs: UserPreferences,
@@ -28,6 +35,12 @@ class HomeViewModel @Inject constructor(
 
     private val _lastSession = MutableStateFlow<LastSession?>(null)
     val lastSession: StateFlow<LastSession?> = _lastSession
+
+    // Was silently swallowed before (runCatching with no result handling) — a failed background
+    // refresh looked identical to a successful one, so a stale topic just stayed stale with no
+    // clue why. Surfaced here so the screen can show it instead.
+    private val _syncError = MutableStateFlow<String?>(null)
+    val syncError: StateFlow<String?> = _syncError
 
     init {
         viewModelScope.launch {
@@ -48,12 +61,18 @@ class HomeViewModel @Inject constructor(
     /** Best-effort background refresh, triggered only when the user actually heads into
      * "Самостійне вивчення" — not at language selection, since picking a language doesn't imply
      * the user wants server content at all (they might only be here for "Власний матеріал",
-     * which never needs a network call). Errors are swallowed; this isn't a user-facing action —
-     * the "Оновити" button on LanguageMenuScreen stays available for a deliberate retry. */
+     * which never needs a network call). Doesn't block navigation — the mode screen opens
+     * immediately and picks up whatever this refresh changes as it completes (both screens read
+     * the same Room tables as Flows). A failure is surfaced via [syncError] rather than swallowed,
+     * so a stuck stale topic has a visible reason instead of silently never updating. */
     fun enterSelfStudy() {
         viewModelScope.launch {
+            _syncError.value = null
             if (connectivityChecker.isOnline()) {
-                runCatching { syncRepository.refreshLanguage(languageId) }
+                val result = runCatching { syncRepository.refreshLanguage(languageId) }
+                if (result.isFailure) {
+                    _syncError.value = "Не вдалося оновити: ${sanitizeSyncError(result.exceptionOrNull()?.message)}"
+                }
             }
         }
     }

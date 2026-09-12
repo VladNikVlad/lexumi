@@ -74,5 +74,17 @@ Android — `app/src/main/java/com/lexumi/app/data/repository/RepositoryImpl.kt`
 Android-застосунком.
 
 Відкладено: drag-and-drop переупорядкування (лишається просте числове
-`position`), масовий імпорт, 2FA/кілька адмінів (керуються вручну через
-Dashboard), прев'ю контенту як в застосунку.
+`position`), масовий імпорт, прев'ю контенту як в застосунку.
+
+## Видалення — soft-delete, не справжній DELETE
+
+Кнопка "Видалити" ніде (крім відео та аудіодіалогів) насправді не стирає
+рядок — `deleteRow()` (`crud.js`) проставляє йому `deleted_at`, а
+`listRows()`/RLS-політики читання (`backend/SCHEMA.md`) виключають такі
+рядки з будь-якої вибірки, тож ефект для користувача той самий. Видалення
+мови/розділу/теми каскадно позначає й усе вкладене — крім відео/аудіо
+(і їхніх тестових питань), які й далі видаляються насправді (див.
+`cascadeDeleteLanguage`/`cascadeDeleteSection`/`cascadeDeleteTopic` в
+`app.js`). SQL для додавання цих колонок — `backend/soft_delete_migration.sql`
+(виконати один раз у Supabase SQL Editor). Відновлення видаленого через
+UI поки нема — лише вручну через Table Editor (обнулити `deleted_at`).

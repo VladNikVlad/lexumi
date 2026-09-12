@@ -4,6 +4,16 @@ import { supabaseClient } from './supabase-client.js';
 // Supabase directly (no server of its own), so these are thin wrappers that throw on error
 // rather than returning it, since every call site here just wants to await-and-move-on.
 
+// Every table here except videos/audio_dialogs/test_questions is soft-delete: `deleteRow` sets
+// `deleted_at` instead of removing the row, and `listRows` always excludes rows where it's set.
+// The same exclusion is also baked into each table's RLS `select` policy (see backend/SCHEMA.md)
+// so Android's direct Supabase queries stay correct too — this client-side filter is redundant
+// with that, kept only so the admin panel is still correct on its own if RLS is ever changed.
+const SOFT_DELETE_TABLES = new Set([
+  'languages', 'sections', 'topics', 'words', 'topic_words', 'rules',
+  'sentences', 'topic_sentences', 'image_content', 'stories',
+]);
+
 export async function listRows(table, filters = {}, orderBy = null) {
   let query = supabaseClient.from(table).select('*');
   // Every content table here is admin-authored (owner_id: null), and .match() sends a null
@@ -13,6 +23,7 @@ export async function listRows(table, filters = {}, orderBy = null) {
   for (const [column, value] of Object.entries(filters)) {
     query = value === null ? query.is(column, null) : query.eq(column, value);
   }
+  if (SOFT_DELETE_TABLES.has(table)) query = query.is('deleted_at', null);
   if (orderBy) query = query.order(orderBy, { ascending: true });
   const { data, error } = await query;
   if (error) throw error;
@@ -32,8 +43,13 @@ export async function updateRow(table, id, patch) {
 }
 
 export async function deleteRow(table, id) {
-  const { error } = await supabaseClient.from(table).delete().eq('id', id);
-  if (error) throw error;
+  if (SOFT_DELETE_TABLES.has(table)) {
+    const { error } = await supabaseClient.from(table).update({ deleted_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabaseClient.from(table).delete().eq('id', id);
+    if (error) throw error;
+  }
 }
 
 /** Calls a Postgres RPC function — used where a plain table write is blocked by design (e.g.

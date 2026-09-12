@@ -10,6 +10,71 @@ const authBar = document.getElementById('auth-bar');
 
 let admin = null; // { id, display_name, is_admin } while signed in as a confirmed admin
 
+// ---------- cascade delete for languages/sections/topics ----------
+// Postgres's own `on delete cascade` only fires on a real DELETE — since `deleteRow` now soft-
+// deletes (see crud.js), deleting a language/section/topic no longer automatically takes its
+// children with it, so the same cascade shape has to be reproduced here by hand. Videos/audio
+// dialogs (and their test_questions) are the one exception that still gets a real delete either
+// way — mirrors what the FK cascade already did for them before this change.
+
+async function hardDeleteVideoWithQuestions(videoId) {
+  const questions = await listRows('test_questions', { video_id: videoId });
+  await Promise.all(questions.map((q) => deleteRow('test_questions', q.id)));
+  await deleteRow('videos', videoId);
+}
+
+async function hardDeleteAudioDialogWithQuestions(dialogId) {
+  const questions = await listRows('test_questions', { audio_dialog_id: dialogId });
+  await Promise.all(questions.map((q) => deleteRow('test_questions', q.id)));
+  await deleteRow('audio_dialogs', dialogId);
+}
+
+async function cascadeDeleteTopic(topicId) {
+  const [wordLinks, sentenceLinks, images, stories, videos, dialogs] = await Promise.all([
+    listRows('topic_words', { topic_id: topicId }),
+    listRows('topic_sentences', { topic_id: topicId }),
+    listRows('image_content', { topic_id: topicId }),
+    listRows('stories', { topic_id: topicId }),
+    listRows('videos', { topic_id: topicId }),
+    listRows('audio_dialogs', { topic_id: topicId }),
+  ]);
+  await Promise.all([
+    ...wordLinks.map((l) => deleteRow('topic_words', l.id)),
+    ...sentenceLinks.map((l) => deleteRow('topic_sentences', l.id)),
+    ...images.map((i) => deleteRow('image_content', i.id)),
+    ...stories.map((s) => deleteRow('stories', s.id)),
+    ...videos.map((v) => hardDeleteVideoWithQuestions(v.id)),
+    ...dialogs.map((d) => hardDeleteAudioDialogWithQuestions(d.id)),
+  ]);
+  await deleteRow('topics', topicId);
+}
+
+async function cascadeDeleteSection(sectionId) {
+  const topics = await listRows('topics', { section_id: sectionId });
+  for (const topic of topics) await cascadeDeleteTopic(topic.id);
+  await deleteRow('sections', sectionId);
+}
+
+// Words/sentences/rules are language-scoped and shared across topics (see backend/SCHEMA.md) —
+// deleting a section/topic never touches them (same as today, where the FK cascade only ever
+// removed the topic_words/topic_sentences link, not the shared row). A whole-language delete is
+// the one case that takes them too, since it really is "delete everything under this language".
+async function cascadeDeleteLanguage(languageId) {
+  const sections = await listRows('sections', { language_id: languageId });
+  for (const section of sections) await cascadeDeleteSection(section.id);
+  const [words, sentences, rules] = await Promise.all([
+    listRows('words', { language_id: languageId }),
+    listRows('sentences', { language_id: languageId }),
+    listRows('rules', { language_id: languageId }),
+  ]);
+  await Promise.all([
+    ...words.map((w) => deleteRow('words', w.id)),
+    ...sentences.map((s) => deleteRow('sentences', s.id)),
+    ...rules.map((r) => deleteRow('rules', r.id)),
+  ]);
+  await deleteRow('languages', languageId);
+}
+
 // ---------- bootstrap ----------
 
 async function init() {
@@ -135,7 +200,7 @@ async function renderLanguages() {
       if (name && name.trim()) { await updateRow('languages', id, { name: name.trim() }); renderLanguages(); }
     },
     onDelete: async (id) => {
-      if (confirm('Видалити мову і весь її вміст? Це незворотно.')) { await deleteRow('languages', id); renderLanguages(); }
+      if (confirm('Видалити мову і весь її вміст? Це незворотно.')) { await cascadeDeleteLanguage(id); renderLanguages(); }
     },
   });
 }
@@ -254,14 +319,14 @@ async function renderLanguageDetail(languageId) {
         const name = prompt('Нова назва теми:', oldName);
         if (name && name.trim()) { await updateRow('topics', id, { name: name.trim() }); renderLanguageDetail(languageId); }
       },
-      onDelete: async (id) => { if (confirm('Видалити тему?')) { await deleteRow('topics', id); renderLanguageDetail(languageId); } },
+      onDelete: async (id) => { if (confirm('Видалити тему?')) { await cascadeDeleteTopic(id); renderLanguageDetail(languageId); } },
     });
     block.querySelector('.rename-section')?.addEventListener('click', async () => {
       const name = prompt('Нова назва розділу:', section.name);
       if (name && name.trim()) { await updateRow('sections', section.id, { name: name.trim() }); renderLanguageDetail(languageId); }
     });
     block.querySelector('.delete-section')?.addEventListener('click', async () => {
-      if (confirm('Видалити розділ і всі його теми?')) { await deleteRow('sections', section.id); renderLanguageDetail(languageId); }
+      if (confirm('Видалити розділ і всі його теми?')) { await cascadeDeleteSection(section.id); renderLanguageDetail(languageId); }
     });
     block.querySelector('.add-topic-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
