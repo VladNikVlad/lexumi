@@ -7,6 +7,7 @@ import com.lexumi.app.data.datastore.LastSession
 import com.lexumi.app.data.datastore.UserPreferences
 import com.lexumi.app.data.network.ConnectivityChecker
 import com.lexumi.app.data.sync.ContentSyncRepository
+import com.lexumi.app.domain.repository.LanguageRepository
 import com.lexumi.app.domain.repository.TopicRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +27,7 @@ private fun sanitizeSyncError(message: String?): String? =
 class HomeViewModel @Inject constructor(
     private val prefs: UserPreferences,
     private val topicRepository: TopicRepository,
+    private val languageRepository: LanguageRepository,
     private val syncRepository: ContentSyncRepository,
     private val connectivityChecker: ConnectivityChecker,
     savedStateHandle: SavedStateHandle,
@@ -56,24 +58,30 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
+        viewModelScope.launch { refreshSelfStudyContent() }
     }
 
-    /** Best-effort background refresh, triggered only when the user actually heads into
-     * "Самостійне вивчення" — not at language selection, since picking a language doesn't imply
-     * the user wants server content at all (they might only be here for "Власний матеріал",
-     * which never needs a network call). Doesn't block navigation — the mode screen opens
-     * immediately and picks up whatever this refresh changes as it completes (both screens read
-     * the same Room tables as Flows). A failure is surfaced via [syncError] rather than swallowed,
-     * so a stuck stale topic has a visible reason instead of silently never updating. */
-    fun enterSelfStudy() {
-        viewModelScope.launch {
-            _syncError.value = null
-            if (connectivityChecker.isOnline()) {
-                val result = runCatching { syncRepository.refreshLanguage(languageId) }
-                if (result.isFailure) {
-                    _syncError.value = "Не вдалося оновити: ${sanitizeSyncError(result.exceptionOrNull()?.message)}"
-                }
-            }
+    /** Best-effort background refresh of "Самостійне вивчення" content, run once whenever Home is
+     * reached for this language — for a returning user Splash navigates straight here
+     * (SplashViewModel.Home), so this is effectively "on app open", not something tied to which
+     * button the user happens to tap next. Previously this only ran from the "Самостійне
+     * вивчення" button's onClick, which meant "Продовжити навчання" (the button actually shown
+     * whenever a saved session exists — i.e. on every repeat visit) skipped it entirely, so a
+     * server-side deletion never got picked up during normal use. Doesn't block navigation — both
+     * mode screens read the same Room tables as Flows, so whatever this changes just shows up as
+     * it completes. Skipped entirely for a language that was never linked to the server
+     * (`remoteId == null`, e.g. a language created purely for "Власний матеріал") — otherwise
+     * every such user would see [syncError] on every launch for a call that can never succeed. A
+     * real failure is surfaced via [syncError] rather than swallowed, so a stuck stale topic has a
+     * visible reason instead of silently never updating — but nothing is shown while this just
+     * works, per design: the user should never need to notice an update is happening. */
+    private suspend fun refreshSelfStudyContent() {
+        val language = languageRepository.getLanguage(languageId)
+        if (language?.remoteId == null) return
+        if (!connectivityChecker.isOnline()) return
+        val result = runCatching { syncRepository.refreshLanguage(languageId) }
+        if (result.isFailure) {
+            _syncError.value = "Не вдалося оновити: ${sanitizeSyncError(result.exceptionOrNull()?.message)}"
         }
     }
 }

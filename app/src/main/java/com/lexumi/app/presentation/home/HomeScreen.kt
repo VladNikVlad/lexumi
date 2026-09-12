@@ -83,7 +83,7 @@ fun HomeScreen(
                 PillActionButton(
                     text = stringResource(R.string.self_study),
                     icon = Icons.Filled.AutoStories,
-                    onClick = { viewModel.enterSelfStudy(); onSelfStudy() },
+                    onClick = onSelfStudy,
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
                 PillActionButton(
