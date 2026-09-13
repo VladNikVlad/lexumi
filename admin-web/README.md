@@ -76,6 +76,34 @@ Android-застосунком.
 Відкладено: drag-and-drop переупорядкування (лишається просте числове
 `position`), масовий імпорт, прев'ю контенту як в застосунку.
 
+## 2FA (email-код після входу)
+
+Після email+пароля адмін ще вводить 6-значний код, надісланий на його
+`profiles.email`, перш ніж бачить саму панель — раз на браузерну сесію
+(закрили вкладку/браузер → наступного разу код питає знову). Одноразове
+налаштування (нікого з цього ще не зроблено — CLI Supabase в моєму
+середовищі немає, тож деплой лише через Dashboard):
+
+1. **Таблиця** — виконати `backend/admin_2fa.sql` у Supabase SQL Editor.
+2. **Resend** — зареєструватись на [resend.com](https://resend.com)
+   (безкоштовний тариф), скопіювати API-ключ. Сендер за замовчуванням —
+   `onboarding@resend.dev` (працює одразу, без підтвердження домену);
+   щоб листи йшли з власного домену, підключіть його в Resend і
+   поміняйте `RESEND_FROM` у `supabase/functions/send-2fa-code/index.ts`.
+3. **Дві Edge Functions** — Supabase Dashboard → **Edge Functions** →
+   Create function:
+   - `send-2fa-code` — вставити вміст `supabase/functions/send-2fa-code/index.ts`.
+   - `verify-2fa-code` — вставити вміст `supabase/functions/verify-2fa-code/index.ts`.
+   - Обидві функції імпортують `../_shared/cors.ts` — якщо Dashboard-редактор
+     не підхоплює відносні імпорти між функціями автоматично, створіть і
+     її як третій файл усередині кожної функції (вміст той самий,
+     `supabase/functions/_shared/cors.ts`) або вставте вміст `cors.ts`
+     прямо в початок обох `index.ts` замість `import`.
+4. **Секрет** — Edge Functions → Manage secrets → додати
+   `RESEND_API_KEY` (значення — ключ із кроку 2). `SUPABASE_URL`/
+   `SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY` Supabase підставляє
+   в кожну функцію сам, вручну їх задавати не треба.
+
 ## Видалення — soft-delete, не справжній DELETE
 
 Кнопка "Видалити" ніде (крім відео та аудіодіалогів) насправді не стирає

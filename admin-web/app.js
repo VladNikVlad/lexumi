@@ -77,13 +77,24 @@ async function cascadeDeleteLanguage(languageId) {
 
 // ---------- bootstrap ----------
 
+// 2FA is verified per BROWSER SESSION, not persisted across a closed tab/browser — sessionStorage
+// (not localStorage) is exactly that lifetime. Keyed by admin id so switching accounts in the same
+// browser (rare, but possible) doesn't let one admin's verification cover another's.
+function isTwoFactorVerified(adminId) {
+  return sessionStorage.getItem(`lexumi_2fa_verified_${adminId}`) === 'true';
+}
+function markTwoFactorVerified(adminId) {
+  sessionStorage.setItem(`lexumi_2fa_verified_${adminId}`, 'true');
+}
+
 async function init() {
   admin = await requireAdmin();
   renderAuthBar();
-  if (admin) route(); else renderLogin();
+  if (!admin) { renderLogin(); return; }
+  if (isTwoFactorVerified(admin.id)) route(); else render2faGate();
 }
 
-window.addEventListener('hashchange', () => { if (admin) route(); });
+window.addEventListener('hashchange', () => { if (admin && isTwoFactorVerified(admin.id)) route(); });
 
 supabaseClient.auth.onAuthStateChange(async () => {
   const wasAdmin = !!admin;
@@ -92,8 +103,7 @@ supabaseClient.auth.onAuthStateChange(async () => {
   if (!admin) {
     renderLogin();
   } else if (!wasAdmin) {
-    location.hash = '#/';
-    route();
+    if (isTwoFactorVerified(admin.id)) { location.hash = '#/'; route(); } else { render2faGate(); }
   }
 });
 
@@ -149,6 +159,81 @@ function renderLogin() {
       redirectTo: `${location.origin}/reset-password.html`,
     });
     statusEl.textContent = error ? error.message : 'Лист надіслано — перевірте пошту.';
+  });
+}
+
+// ---------- 2FA gate ----------
+
+/** supabaseClient.functions.invoke() doesn't parse a non-2xx Edge Function response body into
+ * `data` — it throws a FunctionsHttpError whose `.context` is the raw Response. This pulls the
+ * `{ error: "..." }` message the function actually sent, falling back to a generic one. */
+async function functionErrorMessage(error, fallback) {
+  try {
+    const body = await error.context.json();
+    return body?.error || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function render2faGate() {
+  app.innerHTML = `
+    <div class="card login-card">
+      <h1>Підтвердження входу</h1>
+      <p class="hint">Надсилаємо 6-значний код на ${escapeHtml(admin.email || 'вашу пошту')}...</p>
+      <form id="twofa-form">
+        <label>Код із листа <input type="text" name="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" required autocomplete="one-time-code"></label>
+        <button type="submit">Підтвердити</button>
+      </form>
+      <p id="twofa-error" class="error"></p>
+      <p><a href="#" id="resend-link">Надіслати код ще раз</a></p>
+    </div>
+  `;
+  const hintEl = $('.hint');
+  const errorEl = $('#twofa-error');
+  const resendLink = $('#resend-link');
+
+  async function sendCode() {
+    errorEl.textContent = '';
+    const { error } = await supabaseClient.functions.invoke('send-2fa-code');
+    hintEl.textContent = error
+      ? await functionErrorMessage(error, 'Не вдалося надіслати код. Спробуйте "Надіслати ще раз".')
+      : `Код надіслано на ${escapeHtml(admin.email || 'вашу пошту')}.`;
+  }
+  sendCode();
+
+  $('#twofa-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.textContent = '';
+    const fd = new FormData(e.target);
+    const { data, error } = await supabaseClient.functions.invoke('verify-2fa-code', { body: { code: fd.get('code').trim() } });
+    if (error || !data?.ok) {
+      errorEl.textContent = error ? await functionErrorMessage(error, 'Невірний код.') : 'Невірний код.';
+      return;
+    }
+    markTwoFactorVerified(admin.id);
+    location.hash = '#/';
+    route();
+  });
+
+  // Cooldown against hammering Resend (its own free-tier rate limit is per-second, but there's no
+  // reason a person needs to re-request faster than this anyway).
+  let cooldownSecondsLeft = 0;
+  resendLink.addEventListener('click', async (e) => {
+    e.preventDefault();
+    if (cooldownSecondsLeft > 0) return;
+    await sendCode();
+    cooldownSecondsLeft = 30;
+    resendLink.textContent = `Надіслати ще раз (${cooldownSecondsLeft}с)`;
+    const timer = setInterval(() => {
+      cooldownSecondsLeft -= 1;
+      if (cooldownSecondsLeft <= 0) {
+        clearInterval(timer);
+        resendLink.textContent = 'Надіслати код ще раз';
+      } else {
+        resendLink.textContent = `Надіслати ще раз (${cooldownSecondsLeft}с)`;
+      }
+    }, 1000);
   });
 }
 

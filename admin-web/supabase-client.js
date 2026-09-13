@@ -16,7 +16,7 @@ export async function requireAdmin() {
   if (!sessionData.session) return null;
   const { data, error } = await supabaseClient
     .from('profiles')
-    .select('id, display_name, is_admin')
+    .select('id, display_name, is_admin, email')
     .eq('id', sessionData.session.user.id)
     .maybeSingle();
   if (error || !data || !data.is_admin) return null;
