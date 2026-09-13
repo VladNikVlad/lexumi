@@ -2,7 +2,6 @@ package com.lexumi.app.presentation.language
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
@@ -36,11 +37,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lexumi.app.R
+import com.lexumi.app.data.sync.DownloadableLanguage
 import com.lexumi.app.domain.model.Language
 import com.lexumi.app.presentation.components.GradientBackground
 import com.lexumi.app.presentation.components.LexumiLogo
@@ -49,6 +52,15 @@ import com.lexumi.app.presentation.components.PillActionButton
 import com.lexumi.app.presentation.components.SettingsIconButton
 import com.lexumi.app.presentation.theme.LexumiOutline
 import com.lexumi.app.presentation.theme.PillShape
+
+/** One row of the unified, alphabetically-sorted language list — either already local (this
+ * profile's own, or a previously downloaded admin one) or admin-published but not downloaded yet.
+ * Selecting the latter downloads it first (see [LanguageMenuViewModel.download]); either way the
+ * user just picks a name from one list, never thinks about "already have it or not" themselves. */
+private sealed class LanguageMenuItem(val name: String) {
+    class Local(val language: Language) : LanguageMenuItem(language.name)
+    class Downloadable(val remote: DownloadableLanguage) : LanguageMenuItem(remote.name)
+}
 
 /** Publishing (long-press to push a language up as admin content) is gone — that's exclusively
  * a job for the admin web panel now (admin-web/). This screen only ever reads: pick a language,
@@ -79,84 +91,83 @@ fun LanguageMenuScreen(
         onDispose { window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
+    // One flat, alphabetical list — own/already-downloaded languages and admin-published ones not
+    // downloaded yet, mixed together. The user just picks a name; whether it needs downloading
+    // first is an implementation detail, not something they should have to think about.
+    val items = (languages.map { LanguageMenuItem.Local(it) } + uiState.downloadableLanguages.map { LanguageMenuItem.Downloadable(it) })
+        .sortedBy { it.name.lowercase() }
+
     GradientBackground {
         SettingsIconButton(onClick = onSettings, modifier = Modifier.align(Alignment.TopEnd).padding(20.dp))
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(32.dp),
-            verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             LexumiLogo(width = 220.dp)
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(32.dp))
+            Text(stringResource(R.string.choose_language), style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(16.dp))
 
-            languages.forEach { language ->
-                // Only a language the user created themselves can be renamed/deleted here — an
-                // admin-downloaded one's name is overwritten by the next background sync anyway,
-                // and deleting it isn't what this screen is for (see LanguageRepository doc).
-                val isOwnLanguage = language.remoteId == null
-                Surface(
-                    shape = PillShape,
-                    color = Color.Transparent,
-                    border = BorderStroke(1.dp, LexumiOutline),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp)
-                        .clickable { viewModel.selectLanguage(language.id) },
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Filled.MenuBook, contentDescription = null, tint = LexumiOutline)
-                        Spacer(Modifier.width(16.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(language.name, style = MaterialTheme.typography.titleMedium)
-                            if (isOwnLanguage) {
-                                Text(stringResource(R.string.own_language_label), style = MaterialTheme.typography.bodySmall, color = LexumiOutline)
-                            }
+            // Scrolls on its own, independent of the "Додати власну мову" button below — that
+            // button must stay pinned at the bottom of the screen no matter how many languages
+            // are in the list (never pushed off-screen, never part of the scrolling content).
+            Column(
+                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                items.forEach { item ->
+                    when (item) {
+                        is LanguageMenuItem.Local -> {
+                            val language = item.language
+                            // Only a language the user created themselves can be renamed/deleted
+                            // here — an admin-downloaded one's name is overwritten by the next
+                            // background sync anyway (see LanguageRepository doc).
+                            val isOwnLanguage = language.remoteId == null
+                            LanguageRow(
+                                name = language.name,
+                                icon = Icons.Filled.MenuBook,
+                                subtitle = if (isOwnLanguage) stringResource(R.string.own_language_label) else null,
+                                onClick = { viewModel.selectLanguage(language.id) },
+                                trailing = if (isOwnLanguage) {
+                                    {
+                                        IconButton(onClick = { renamingLanguage = language }) {
+                                            Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.edit), tint = LexumiOutline)
+                                        }
+                                        IconButton(onClick = { deletingLanguage = language }) {
+                                            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete), tint = LexumiOutline)
+                                        }
+                                    }
+                                } else null,
+                            )
                         }
-                        if (isOwnLanguage) {
-                            IconButton(onClick = { renamingLanguage = language }) {
-                                Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.edit), tint = LexumiOutline)
-                            }
-                            IconButton(onClick = { deletingLanguage = language }) {
-                                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete), tint = LexumiOutline)
-                            }
+                        is LanguageMenuItem.Downloadable -> {
+                            LanguageRow(
+                                name = item.remote.name,
+                                icon = Icons.Filled.CloudDownload,
+                                onClick = { viewModel.download(item.remote.remoteId) },
+                            )
                         }
                     }
                 }
             }
 
+            if (uiState.busy) {
+                Spacer(Modifier.height(8.dp))
+                CircularProgressIndicator()
+            }
+            uiState.message?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+
+            Spacer(Modifier.height(16.dp))
             PillActionButton(
                 text = stringResource(R.string.add_language),
                 icon = Icons.Filled.Add,
                 onClick = onAddLanguage,
             )
-
-            if (uiState.downloadableLanguages.isNotEmpty()) {
-                Spacer(Modifier.height(32.dp))
-                Text("Доступно для завантаження", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(12.dp))
-                uiState.downloadableLanguages.forEach { downloadable ->
-                    PillActionButton(
-                        text = downloadable.name,
-                        icon = Icons.Filled.CloudDownload,
-                        onClick = { viewModel.download(downloadable.remoteId) },
-                        modifier = Modifier.padding(bottom = 12.dp),
-                    )
-                }
-            }
-
-            if (uiState.busy) {
-                Spacer(Modifier.height(16.dp))
-                CircularProgressIndicator()
-            }
-            uiState.message?.let {
-                Spacer(Modifier.height(12.dp))
-                Text(it, style = MaterialTheme.typography.bodyMedium)
-            }
         }
 
         renamingLanguage?.let { language ->
@@ -186,6 +197,40 @@ fun LanguageMenuScreen(
                 },
                 dismissButton = { TextButton(onClick = { deletingLanguage = null }) { Text(stringResource(R.string.cancel)) } },
             )
+        }
+    }
+}
+
+@Composable
+private fun LanguageRow(
+    name: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    subtitle: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Surface(
+        shape = PillShape,
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, LexumiOutline),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp)
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = null, tint = LexumiOutline)
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(name, style = MaterialTheme.typography.titleMedium)
+                if (subtitle != null) {
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = LexumiOutline)
+                }
+            }
+            trailing?.invoke()
         }
     }
 }

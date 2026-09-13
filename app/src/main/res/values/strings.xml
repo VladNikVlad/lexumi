@@ -16,7 +16,7 @@
     <string name="rename_language_title">Перейменувати мову</string>
     <string name="delete_language_title">Видалити мову</string>
     <string name="delete_language_confirm">Видалити «%1$s» і весь її вміст? Це незворотно.</string>
-    <string name="choose_language">Вибрати мову</string>
+    <string name="choose_language">Виберіть мову для вивчення</string>
     <string name="new_language_hint">Введіть назву мови</string>
     <string name="language_already_exists">Така мова вже існує</string>
 

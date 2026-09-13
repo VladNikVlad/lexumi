@@ -16,7 +16,7 @@
     <string name="rename_language_title">Rename language</string>
     <string name="delete_language_title">Delete language</string>
     <string name="delete_language_confirm">Delete "%1$s" and everything in it? This can\'t be undone.</string>
-    <string name="choose_language">Choose a language</string>
+    <string name="choose_language">Choose a language to study</string>
     <string name="new_language_hint">Enter the language name</string>
     <string name="language_already_exists">This language already exists</string>
 
