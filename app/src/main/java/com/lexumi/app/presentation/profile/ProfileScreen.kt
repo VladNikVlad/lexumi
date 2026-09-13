@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MenuBook
@@ -34,13 +33,10 @@ fun ProfileScreen(
 ) {
     val context = LocalContext.current
     val currentProfileId by viewModel.currentProfileId.collectAsState()
-    val profiles by viewModel.profiles.collectAsState()
-    val currentProfile = profiles.find { it.id == currentProfileId }
+    val currentProfile by viewModel.currentProfile.collectAsState()
 
     var pendingName by remember { mutableStateOf<String?>(null) }
     var pendingLanguageTag by remember { mutableStateOf(viewModel.currentAppLanguageTag()) }
-    var showNewProfileField by remember { mutableStateOf(false) }
-    var newProfileName by remember { mutableStateOf("") }
 
     val displayedName = pendingName ?: currentProfile?.displayName ?: ""
     val hasUnsavedChanges = (pendingName != null && pendingName != currentProfile?.displayName) ||
@@ -115,31 +111,6 @@ fun ProfileScreen(
                 onClick = onChangeLearningLanguage,
                 modifier = Modifier.padding(bottom = 16.dp),
             )
-
-            ProfileSection(title = null) {
-                if (showNewProfileField) {
-                    LexumiTextField(
-                        value = newProfileName, onValueChange = { newProfileName = it },
-                        label = stringResource(R.string.new_profile_name_hint),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    PillActionButton(
-                        text = stringResource(R.string.create_profile),
-                        icon = Icons.Filled.Add,
-                        onClick = {
-                            viewModel.createAndSwitchToNewProfile(newProfileName)
-                            showNewProfileField = false
-                            newProfileName = ""
-                        },
-                    )
-                } else {
-                    TextButton(onClick = { showNewProfileField = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.add_new_profile))
-                    }
-                }
-            }
         }
     }
 }

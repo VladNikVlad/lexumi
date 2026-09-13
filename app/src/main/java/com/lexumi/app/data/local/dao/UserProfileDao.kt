@@ -6,24 +6,18 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface UserProfileDao {
-    @Query("SELECT * FROM user_profiles ORDER BY createdAt ASC")
-    fun observeAll(): Flow<List<UserProfileEntity>>
-
     @Query("SELECT * FROM user_profiles WHERE id = :id")
     suspend fun getById(id: Long): UserProfileEntity?
 
-    @Query("SELECT displayName FROM user_profiles")
-    suspend fun getAllDisplayNames(): List<String>
+    @Query("SELECT * FROM user_profiles WHERE id = :id")
+    fun observeById(id: Long): Flow<UserProfileEntity?>
+
+    @Query("SELECT * FROM user_profiles WHERE authUserId = :authUserId LIMIT 1")
+    suspend fun getByAuthUserId(authUserId: String): UserProfileEntity?
 
     @Insert
     suspend fun insert(profile: UserProfileEntity): Long
 
     @Query("UPDATE user_profiles SET displayName = :name WHERE id = :id")
     suspend fun rename(id: Long, name: String)
-
-    @Delete
-    suspend fun delete(profile: UserProfileEntity)
-
-    @Query("SELECT COUNT(*) FROM user_profiles")
-    suspend fun count(): Int
 }

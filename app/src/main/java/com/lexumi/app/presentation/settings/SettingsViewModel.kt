@@ -40,9 +40,13 @@ class SettingsViewModel @Inject constructor(
     fun setRemindersEnabled(enabled: Boolean) = viewModelScope.launch { prefs.setRemindersEnabled(enabled) }
 
     /** "Вийти" — signs out of the Google/Supabase session too, not just the local profile —
-     * app returns all the way to the sign-in screen, not just the local profile picker. */
+     * app returns all the way to the sign-in screen. Clears the selected language/session too:
+     * not required for correctness (Splash re-validates them against the next signed-in account's
+     * own profile either way), but avoids even a brief flash of a different account's language. */
     fun logout() = viewModelScope.launch {
         prefs.clearCurrentProfile()
+        prefs.clearSelectedLanguage()
+        prefs.clearLastSession()
         authRepository.signOut()
         _loggedOut.value = true
     }

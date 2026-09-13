@@ -565,8 +565,20 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
     }
 }
 
+/** v15 -> v16: added [com.lexumi.app.data.local.entity.UserProfileEntity.authUserId] — ties a
+ * local profile to exactly one signed-in Supabase/Google account (see SplashViewModel), replacing
+ * the previous manual multi-profile picker. Existing rows get NULL, which simply means "not yet
+ * claimed by any account" — the next sign-in on this device either finds its own row by
+ * authUserId or creates a fresh one, so a stale NULL row is just orphaned, never mismatched. */
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE user_profiles ADD COLUMN authUserId TEXT")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_user_profiles_authUserId ON user_profiles(authUserId)")
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
     MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
-    MIGRATION_14_15,
+    MIGRATION_14_15, MIGRATION_15_16,
 )

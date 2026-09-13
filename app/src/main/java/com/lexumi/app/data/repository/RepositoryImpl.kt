@@ -45,23 +45,16 @@ private fun TestQuestionEntity.toDomain() = TestQuestion(
 )
 
 class ProfileRepositoryImpl @Inject constructor(private val dao: UserProfileDao) : ProfileRepository {
-    override fun observeProfiles(): Flow<List<UserProfile>> = dao.observeAll().map { list -> list.map { it.toDomain() } }
-    override suspend fun createProfile(name: String): Long = dao.insert(UserProfileEntity(displayName = name))
+    override suspend fun getOrCreateForAuthUser(authUserId: String, displayName: String?): Long =
+        dao.getByAuthUserId(authUserId)?.id
+            ?: dao.insert(UserProfileEntity(displayName = displayName?.ifBlank { null } ?: "Користувач", authUserId = authUserId))
+    override fun observeProfile(id: Long): Flow<UserProfile?> = dao.observeById(id).map { it?.toDomain() }
     override suspend fun renameProfile(id: Long, name: String) = dao.rename(id, name)
-    override suspend fun deleteProfile(profile: UserProfile) = dao.delete(UserProfileEntity(profile.id, profile.displayName))
-    override suspend fun profileCount(): Int = dao.count()
-    override suspend fun profileExists(id: Long): Boolean = dao.getById(id) != null
-    override suspend fun nextDefaultProfileName(): String {
-        val highest = dao.getAllDisplayNames()
-            .mapNotNull { Regex("^user(\\d+)$").matchEntire(it)?.groupValues?.get(1)?.toIntOrNull() }
-            .maxOrNull() ?: 0
-        return "user${highest + 1}"
-    }
 }
 
 class LanguageRepositoryImpl @Inject constructor(private val dao: LanguageDao) : LanguageRepository {
-    override fun observeLanguages(): Flow<List<Language>> =
-        dao.observeAll().map { list -> list.map { it.toDomain() } }
+    override fun observeLanguages(profileId: Long): Flow<List<Language>> =
+        dao.observeForProfile(profileId).map { list -> list.map { it.toDomain() } }
     override suspend fun getLanguage(id: Long): Language? = dao.getById(id)?.toDomain()
     override suspend fun exists(profileId: Long, name: String): Boolean = dao.countByName(profileId, name) > 0
     override suspend fun addLanguage(profileId: Long, name: String): Long =

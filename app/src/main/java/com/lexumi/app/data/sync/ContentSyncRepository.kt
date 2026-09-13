@@ -635,8 +635,10 @@ class ContentSyncRepository @Inject constructor(
         }
     }
 
-    /** Admin-authored languages available on the server that this profile hasn't downloaded yet. */
-    suspend fun listDownloadableLanguages(): List<DownloadableLanguage> {
+    /** Admin-authored languages available on the server that [profileId] specifically hasn't
+     * downloaded yet — scoped per profile so a language another account already grabbed still
+     * shows up here for this one (each account's local copy is independent from that point on). */
+    suspend fun listDownloadableLanguages(profileId: Long): List<DownloadableLanguage> {
         val remote = supabase.from("languages")
             .select(Columns.list("id", "name", "voice_name")) {
                 filter { exact("owner_id", null as Boolean?) }
@@ -644,7 +646,7 @@ class ContentSyncRepository @Inject constructor(
             .decodeList<RemoteLanguageRow>()
         return remote.mapNotNull { row ->
             val id = row.id ?: return@mapNotNull null
-            if (languageDao.getByRemoteId(id) != null) return@mapNotNull null // already downloaded
+            if (languageDao.getByRemoteIdForProfile(id, profileId) != null) return@mapNotNull null // already downloaded
             DownloadableLanguage(id, row.name, row.voiceName)
         }
     }

@@ -6,8 +6,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface LanguageDao {
-    @Query("SELECT * FROM languages ORDER BY createdAt ASC")
-    fun observeAll(): Flow<List<LanguageEntity>>
+    /** Only [profileId]'s own languages — each signed-in account has its own (see
+     * ProfileRepository/SplashViewModel for how profileId maps to an account). */
+    @Query("SELECT * FROM languages WHERE profileId = :profileId ORDER BY createdAt ASC")
+    fun observeForProfile(profileId: Long): Flow<List<LanguageEntity>>
 
     @Query("SELECT * FROM languages WHERE id = :id")
     suspend fun getById(id: Long): LanguageEntity?
@@ -26,6 +28,12 @@ interface LanguageDao {
 
     @Query("SELECT * FROM languages WHERE remoteId = :remoteId LIMIT 1")
     suspend fun getByRemoteId(remoteId: String): LanguageEntity?
+
+    /** Whether [profileId] specifically already has its own local copy of this admin-published
+     * language — used to decide what to still offer in "Доступно для завантаження" (a language
+     * another account downloaded shouldn't disappear from THIS account's list). */
+    @Query("SELECT * FROM languages WHERE remoteId = :remoteId AND profileId = :profileId LIMIT 1")
+    suspend fun getByRemoteIdForProfile(remoteId: String, profileId: Long): LanguageEntity?
 
     @Update
     suspend fun update(language: LanguageEntity)

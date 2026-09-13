@@ -52,6 +52,9 @@ private data class ProfileUpsert(val id: String, @SerialName("display_name") val
 @Serializable
 private data class EmailUpdate(@SerialName("email") val email: String)
 
+/** See [AuthRepository.currentUser]. */
+data class CurrentUser(val id: String, val displayName: String?)
+
 @Singleton
 class AuthRepository @Inject constructor(
     private val supabase: SupabaseClient,
@@ -140,6 +143,16 @@ class AuthRepository @Inject constructor(
         user.email?.let { email ->
             supabase.from("profiles").update(EmailUpdate(email)) { filter { eq("id", user.id) } }
         }
+    }
+
+    /** The signed-in account's id and display name, straight from the locally persisted session —
+     * unlike [getMyProfile], no network round trip, so it's cheap to call on every app launch
+     * (SplashViewModel does, to resolve/create this account's local profile). */
+    fun currentUser(): CurrentUser? {
+        val user = supabase.auth.currentUserOrNull() ?: return null
+        val displayName = user.userMetadata?.get("full_name")?.jsonPrimitive?.contentOrNull
+            ?: user.userMetadata?.get("name")?.jsonPrimitive?.contentOrNull
+        return CurrentUser(user.id, displayName)
     }
 
     /** The current user's profile row — includes `isAdmin`/`isPremium` as the server sees them. */

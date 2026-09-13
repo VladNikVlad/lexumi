@@ -27,7 +27,6 @@ import com.lexumi.app.presentation.theme.LexumiIndigo
 
 @Composable
 fun SplashScreen(
-    onNavigateWelcome: () -> Unit,
     onNavigateLanguageMenu: () -> Unit,
     onNavigateHome: (Long) -> Unit,
     onNavigateSignIn: () -> Unit,
@@ -38,7 +37,6 @@ fun SplashScreen(
 
     LaunchedEffect(destination) {
         when (val d = destination) {
-            is SplashDestination.Welcome -> onNavigateWelcome()
             is SplashDestination.LanguageMenu -> onNavigateLanguageMenu()
             is SplashDestination.Home -> onNavigateHome(d.languageId)
             is SplashDestination.SignIn -> onNavigateSignIn()

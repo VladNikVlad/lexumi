@@ -16,8 +16,7 @@ import javax.inject.Inject
 sealed class SplashDestination {
     data object Loading : SplashDestination()
     data object SignIn : SplashDestination()        // no Supabase session yet -> Google sign-in
-    data object Welcome : SplashDestination()       // no profile yet -> create one
-    data object LanguageMenu : SplashDestination()  // profile exists, no language chosen yet
+    data object LanguageMenu : SplashDestination()  // signed in, no language chosen yet
     data class Home(val languageId: Long) : SplashDestination() // returning user
 }
 
@@ -47,41 +46,33 @@ class SplashViewModel @Inject constructor(
                 _destination.value = SplashDestination.SignIn
                 return@launch
             }
-
-            val storedProfileId = prefs.currentProfileId.first()
-            // A stored profile/language id can go stale (e.g. after a dev-time
-            // database reset) while the separate DataStore prefs still point
-            // to it — verify it's real before trusting it, or the app would
-            // crash trying to insert content under a language that no longer exists.
-            var profileId = storedProfileId?.takeIf { profileRepository.profileExists(it) }
-            if (storedProfileId != null && profileId == null) {
-                prefs.clearCurrentProfile()
+            val user = authRepository.currentUser()
+            if (user == null) {
+                // Shouldn't happen if isSignedIn() just returned true, but the local session
+                // could theoretically vanish between the two checks — fail safe to sign-in.
+                _destination.value = SplashDestination.SignIn
+                return@launch
             }
 
-            val existingProfiles = profileRepository.observeProfiles().first()
-            // Nothing selected, but a local profile already exists (typically after
-            // sign-out + sign-in again) — pick the first one automatically instead of
-            // leaving the language menu empty.
-            if (profileId == null && existingProfiles.isNotEmpty()) {
-                profileId = existingProfiles.first().id
-                prefs.setCurrentProfile(profileId)
-            }
+            // Exactly one local profile per signed-in account — created on this account's very
+            // first sign-in (see ProfileRepository doc). Replaces the old free-for-all where a
+            // cleared `currentProfileId` just fell back to "whichever local profile happens to
+            // exist", which is how a second Google account on the same device used to end up
+            // seeing the first account's languages/progress/name.
+            val profileId = profileRepository.getOrCreateForAuthUser(user.id, user.displayName)
+            prefs.setCurrentProfile(profileId)
 
-            val hasProfiles = existingProfiles.isNotEmpty()
-            _destination.value = when {
-                profileId == null && !hasProfiles -> SplashDestination.Welcome
-                profileId == null -> SplashDestination.LanguageMenu
-                else -> {
-                    val storedLanguageId = prefs.selectedLanguageId.first()
-                    val languageId = storedLanguageId?.takeIf { languageRepository.getLanguage(it) != null }
-                    if (storedLanguageId != null && languageId == null) {
-                        prefs.clearSelectedLanguage()
-                        prefs.clearLastSession()
-                    }
-                    if (languageId == null) SplashDestination.LanguageMenu
-                    else SplashDestination.Home(languageId)
-                }
+            val storedLanguageId = prefs.selectedLanguageId.first()
+            val language = storedLanguageId?.let { languageRepository.getLanguage(it) }
+            // Not enough that the language still exists — it could belong to a DIFFERENT
+            // account's profile that was previously signed in on this device (selectedLanguageId
+            // itself isn't cleared on sign-out, only currentProfileId is).
+            val languageId = language?.takeIf { it.profileId == profileId }?.id
+            if (storedLanguageId != null && languageId == null) {
+                prefs.clearSelectedLanguage()
+                prefs.clearLastSession()
             }
+            _destination.value = if (languageId == null) SplashDestination.LanguageMenu else SplashDestination.Home(languageId)
         }
     }
 }

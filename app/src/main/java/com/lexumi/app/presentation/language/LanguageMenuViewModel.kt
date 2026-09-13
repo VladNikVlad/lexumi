@@ -8,10 +8,13 @@ import com.lexumi.app.data.sync.DownloadableLanguage
 import com.lexumi.app.domain.model.Language
 import com.lexumi.app.domain.repository.LanguageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -26,6 +29,7 @@ data class LanguageMenuUiState(
  * Android at all — that's exclusively a job for the admin web panel (admin-web/) now. This
  * ViewModel only ever reads: browsing/downloading/refreshing admin-published content, same as
  * any other user would. */
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class LanguageMenuViewModel @Inject constructor(
     private val languageRepository: LanguageRepository,
@@ -33,10 +37,11 @@ class LanguageMenuViewModel @Inject constructor(
     private val syncRepository: ContentSyncRepository,
 ) : ViewModel() {
 
-    // Shared across all local profiles on this device (point 3 of the settings rework) —
-    // languages aren't filtered by the active profile anymore.
-    val languages: StateFlow<List<Language>> = languageRepository.observeLanguages()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // Only the signed-in account's own languages — each account has exactly one local profile
+    // (see ProfileRepository/SplashViewModel), so this just follows whichever profile is current.
+    val languages: StateFlow<List<Language>> = prefs.currentProfileId.flatMapLatest { profileId ->
+        if (profileId == null) flowOf(emptyList()) else languageRepository.observeLanguages(profileId)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _selected = MutableStateFlow<Long?>(null)
     val selected: StateFlow<Long?> = _selected
@@ -49,7 +54,8 @@ class LanguageMenuViewModel @Inject constructor(
     }
 
     private suspend fun refreshDownloadable() {
-        val downloadable = runCatching { syncRepository.listDownloadableLanguages() }.getOrDefault(emptyList())
+        val profileId = prefs.currentProfileId.first() ?: return
+        val downloadable = runCatching { syncRepository.listDownloadableLanguages(profileId) }.getOrDefault(emptyList())
         _uiState.value = _uiState.value.copy(downloadableLanguages = downloadable)
     }
 

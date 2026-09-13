@@ -4,19 +4,16 @@ import com.lexumi.app.domain.model.*
 import kotlinx.coroutines.flow.Flow
 
 interface ProfileRepository {
-    fun observeProfiles(): Flow<List<UserProfile>>
-    suspend fun createProfile(name: String): Long
+    /** Exactly one local profile per signed-in account — finds the existing one for [authUserId],
+     * or creates it (named [displayName], falling back to a generic name if Google gave none). */
+    suspend fun getOrCreateForAuthUser(authUserId: String, displayName: String?): Long
+    fun observeProfile(id: Long): Flow<UserProfile?>
     suspend fun renameProfile(id: Long, name: String)
-    suspend fun deleteProfile(profile: UserProfile)
-    suspend fun profileCount(): Int
-    suspend fun profileExists(id: Long): Boolean
-    /** "user1", "user2"... — the next unused default name, based on the highest "userN" already taken. */
-    suspend fun nextDefaultProfileName(): String
 }
 
 interface LanguageRepository {
-    /** All languages that exist locally on this device, regardless of which profile created them. */
-    fun observeLanguages(): Flow<List<Language>>
+    /** Only the languages belonging to [profileId] — each signed-in account has its own. */
+    fun observeLanguages(profileId: Long): Flow<List<Language>>
     suspend fun getLanguage(id: Long): Language?
     suspend fun exists(profileId: Long, name: String): Boolean
     suspend fun addLanguage(profileId: Long, name: String): Long

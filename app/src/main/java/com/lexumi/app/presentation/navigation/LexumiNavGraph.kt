@@ -34,7 +34,6 @@ import com.lexumi.app.presentation.topic.TopicsScreen
 import com.lexumi.app.presentation.topicaction.TopicActionScreen
 import com.lexumi.app.presentation.video.VideoListScreen
 import com.lexumi.app.presentation.video.VideoPlayerScreen
-import com.lexumi.app.presentation.welcome.WelcomeScreen
 
 @Composable
 fun LexumiNavGraph() {
@@ -45,9 +44,6 @@ fun LexumiNavGraph() {
 
         composable(Screen.Splash.route) {
             SplashScreen(
-                onNavigateWelcome = {
-                    navController.navigate(Screen.Welcome.route) { popUpTo(Screen.Splash.route) { inclusive = true } }
-                },
                 onNavigateLanguageMenu = {
                     navController.navigate(Screen.LanguageMenu.route) { popUpTo(Screen.Splash.route) { inclusive = true } }
                 },
@@ -64,16 +60,10 @@ fun LexumiNavGraph() {
             SignInScreen(
                 onSignedIn = {
                     // Re-run the splash decision now that there's a session — it'll route to
-                    // Welcome / LanguageMenu / Home correctly instead of duplicating that logic here.
+                    // LanguageMenu / Home correctly instead of duplicating that logic here.
                     navController.navigate(Screen.Splash.route) { popUpTo(Screen.SignIn.route) { inclusive = true } }
                 },
             )
-        }
-
-        composable(Screen.Welcome.route) {
-            WelcomeScreen(onDone = {
-                navController.navigate(Screen.LanguageMenu.route) { popUpTo(Screen.Welcome.route) { inclusive = true } }
-            })
         }
 
         composable(Screen.LanguageMenu.route) {
@@ -284,7 +274,10 @@ fun LexumiNavGraph() {
                 onBack = back,
                 onProfile = { navController.navigate(Screen.Profile.route) },
                 onLoggedOut = { navController.navigate(Screen.SignIn.route) { popUpTo(0) } },
-                onDataCleared = { navController.navigate(Screen.Welcome.route) { popUpTo(0) } },
+                // "Видалити всі дані" wipes user_profiles too — back to Splash, which re-creates
+                // this account's local profile from scratch (getOrCreateForAuthUser) and lands on
+                // an empty LanguageMenu, same as any other first-run-for-this-account state.
+                onDataCleared = { navController.navigate(Screen.Splash.route) { popUpTo(0) } },
             )
         }
 
