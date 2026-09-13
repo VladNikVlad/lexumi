@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -14,10 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -43,7 +42,8 @@ import com.lexumi.app.presentation.theme.PillShape
 
 /** Publishing (long-press to push a language up as admin content) is gone — that's exclusively
  * a job for the admin web panel now (admin-web/). This screen only ever reads: pick a language,
- * pull in later admin changes ("Оновити"), or download one you don't have yet. */
+ * or download one you don't have yet. Pulling in later admin changes happens silently in the
+ * background as soon as a language is opened (HomeViewModel) — no manual "Оновити" action here. */
 @Composable
 fun LanguageMenuScreen(
     onAddLanguage: () -> Unit,
@@ -80,32 +80,23 @@ fun LanguageMenuScreen(
             Spacer(Modifier.height(40.dp))
 
             languages.forEach { language ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
-                    Surface(
-                        shape = PillShape,
-                        color = Color.Transparent,
-                        border = BorderStroke(1.dp, LexumiOutline),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(60.dp)
-                            .clickable { viewModel.selectLanguage(language.id) },
+                Surface(
+                    shape = PillShape,
+                    color = Color.Transparent,
+                    border = BorderStroke(1.dp, LexumiOutline),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp)
+                        .padding(bottom = 16.dp)
+                        .clickable { viewModel.selectLanguage(language.id) },
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Filled.MenuBook, contentDescription = null, tint = LexumiOutline)
-                            Spacer(Modifier.width(16.dp))
-                            Text(language.name, style = MaterialTheme.typography.titleMedium)
-                        }
-                    }
-                    // Anyone with a server-linked copy can pull later changes — e.g. content
-                    // added through the admin web panel — back in.
-                    if (language.remoteId != null) {
-                        Spacer(Modifier.width(8.dp))
-                        IconButton(onClick = { viewModel.refresh(language.id) }, enabled = !uiState.busy) {
-                            Icon(Icons.Filled.Refresh, contentDescription = "Оновити з сервера", tint = LexumiOutline)
-                        }
+                        Icon(Icons.Filled.MenuBook, contentDescription = null, tint = LexumiOutline)
+                        Spacer(Modifier.width(16.dp))
+                        Text(language.name, style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }

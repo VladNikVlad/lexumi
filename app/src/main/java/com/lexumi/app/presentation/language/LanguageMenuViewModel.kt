@@ -16,12 +16,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** Postgrest/ktor exception messages can include the full failed HTTP request for debugging —
- * headers and all, which means a live `Authorization: Bearer <token>` ends up in this string.
- * Never show that in a user-facing error message; cut it off at the first header dump. */
-private fun sanitizeSyncError(message: String?): String? =
-    message?.substringBefore("Headers:")?.trim()
-
 data class LanguageMenuUiState(
     val downloadableLanguages: List<DownloadableLanguage> = emptyList(),
     val busy: Boolean = false,
@@ -66,22 +60,9 @@ class LanguageMenuViewModel @Inject constructor(
         }
     }
 
-    /** Anyone with a `remoteId`-linked language can pull later server-side changes into their
-     * existing local copy — see [ContentSyncRepository.refreshLanguage] for what this does and
-     * doesn't touch. */
-    fun refresh(languageId: Long) {
-        if (_uiState.value.busy) return
-        _uiState.value = _uiState.value.copy(busy = true, message = null)
-        viewModelScope.launch {
-            val result = runCatching { syncRepository.refreshLanguage(languageId) }
-            _uiState.value = _uiState.value.copy(
-                busy = false,
-                message = if (result.isSuccess) "Оновлено" else "Не вдалося оновити: ${sanitizeSyncError(result.exceptionOrNull()?.message)}",
-            )
-        }
-    }
-
-    /** Downloads an admin-published language into this profile's own local copy, then opens it. */
+    /** Downloads an admin-published language into this profile's own local copy, then opens it.
+     * Pulling in LATER changes to an already-downloaded language is no longer a manual action
+     * here — HomeViewModel does it silently in the background as soon as the language is opened. */
     fun download(remoteLanguageId: String) {
         if (_uiState.value.busy) return
         _uiState.value = _uiState.value.copy(busy = true, message = null)
