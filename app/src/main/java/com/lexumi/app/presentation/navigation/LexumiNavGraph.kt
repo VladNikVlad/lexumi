@@ -103,6 +103,14 @@ fun LexumiNavGraph() {
             HomeScreen(
                 onSelfStudy = { navController.navigate(Screen.Sections.build(languageId, adminMode = true)) },
                 onOwnMaterial = { navController.navigate(Screen.Sections.build(languageId, adminMode = false)) },
+                // Auto-redirect for a personal language with nothing to continue — replaces Home
+                // on the back stack so Back from Sections doesn't just bounce back into a screen
+                // that immediately redirects forward again.
+                onAutoOwnMaterial = {
+                    navController.navigate(Screen.Sections.build(languageId, adminMode = false)) {
+                        popUpTo(Screen.Home.build(languageId)) { inclusive = true }
+                    }
+                },
                 onRepeatWords = { navController.navigate(Screen.ReviewWords.route) },
                 onContinueLast = { topicId, route -> navController.navigate("$route/$topicId") },
                 onSettings = { navController.navigate(Screen.Settings.route) },

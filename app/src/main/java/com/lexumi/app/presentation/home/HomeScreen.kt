@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +37,7 @@ import com.lexumi.app.presentation.components.SettingsIconButton
 fun HomeScreen(
     onSelfStudy: () -> Unit,
     onOwnMaterial: () -> Unit,
+    onAutoOwnMaterial: () -> Unit,
     onRepeatWords: () -> Unit,
     onContinueLast: (topicId: Long, route: String) -> Unit,
     onSettings: () -> Unit,
@@ -43,10 +45,22 @@ fun HomeScreen(
 ) {
     val lastSession by viewModel.lastSession.collectAsState()
     val syncError by viewModel.syncError.collectAsState()
+    val isPersonalLanguage by viewModel.isPersonalLanguage.collectAsState()
     // "Продовжити навчання" is offered first if there's a saved session, but the 3 mode buttons
     // should still be reachable from there without a real navigation — this just reveals them
-    // in place, matching how "Вибрати інший розділ" always used to work.
+    // in place, matching how "Вибрати інший розділ" always used to work. Irrelevant for a
+    // personal language (no modes to choose between — see below), so it never gets set there.
     var showModes by remember { mutableStateOf(false) }
+
+    val session = lastSession
+    // A purely local language (never downloaded from the admin) can never have "Самостійне
+    // вивчення" content, so the whole 3-mode picker would just be two dead ends. With nothing to
+    // continue either, there's nothing this screen actually offers — skip straight to its one
+    // real destination ("Власний матеріал"), replacing Home on the back stack so this doesn't
+    // just bounce right back here on the next Back press.
+    LaunchedEffect(isPersonalLanguage, session) {
+        if (isPersonalLanguage && session == null) onAutoOwnMaterial()
+    }
 
     GradientBackground {
         SettingsIconButton(onClick = onSettings, modifier = Modifier.align(Alignment.TopEnd).padding(20.dp))
@@ -58,7 +72,6 @@ fun HomeScreen(
             LexumiLogo(width = 220.dp)
             Spacer(Modifier.height(40.dp))
 
-            val session = lastSession
             if (session != null && !showModes) {
                 PillActionButton(
                     text = stringResource(R.string.continue_learning),
@@ -67,11 +80,19 @@ fun HomeScreen(
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
                 PillActionButton(
+                    text = stringResource(R.string.repeat_words),
+                    icon = Icons.Filled.Autorenew,
+                    onClick = onRepeatWords,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                )
+                PillActionButton(
                     text = stringResource(R.string.choose_other_section),
                     icon = Icons.Filled.Public,
-                    onClick = { showModes = true },
+                    // A personal language has no other "mode" to reveal — go straight to its
+                    // one real section list instead of showing dead-end buttons in place.
+                    onClick = { if (isPersonalLanguage) onOwnMaterial() else showModes = true },
                 )
-            } else {
+            } else if (!isPersonalLanguage) {
                 PillActionButton(
                     text = stringResource(R.string.system_learning),
                     subtitle = stringResource(R.string.system_learning_subtitle),
@@ -98,6 +119,8 @@ fun HomeScreen(
                     onClick = onRepeatWords,
                 )
             }
+            // The remaining case (personal language, no session) redirects away via the
+            // LaunchedEffect above and renders nothing here in the meantime.
 
             syncError?.let {
                 Spacer(Modifier.height(16.dp))

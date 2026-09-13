@@ -45,7 +45,18 @@ class HomeViewModel @Inject constructor(
     private val _syncError = MutableStateFlow<String?>(null)
     val syncError: StateFlow<String?> = _syncError
 
+    // A language never linked to the server (`remoteId == null`) can never have "Самостійне
+    // вивчення" content — created purely for "Власний матеріал". Defaults to false (assume
+    // admin-style) until the fast local lookup below resolves; in practice that's well under a
+    // frame, so no separate loading state is needed. HomeScreen uses this to skip the 3-mode menu
+    // entirely for such a language — it would just be two dead ends ("Системне"/"Самостійне").
+    private val _isPersonalLanguage = MutableStateFlow(false)
+    val isPersonalLanguage: StateFlow<Boolean> = _isPersonalLanguage
+
     init {
+        viewModelScope.launch {
+            _isPersonalLanguage.value = languageRepository.getLanguage(languageId)?.remoteId == null
+        }
         viewModelScope.launch {
             prefs.lastSession.collectLatest { session ->
                 // A saved "continue" session can point at a topic that no
