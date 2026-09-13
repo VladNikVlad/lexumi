@@ -16,7 +16,11 @@
     <string name="welcome_button_subtitle">Start Learning</string>
 
     <!-- Language menu -->
-    <string name="add_language">Add a new language</string>
+    <string name="add_language">Add your own language</string>
+    <string name="own_language_label">Your own language — on this phone only</string>
+    <string name="rename_language_title">Rename language</string>
+    <string name="delete_language_title">Delete language</string>
+    <string name="delete_language_confirm">Delete "%1$s" and everything in it? This can\'t be undone.</string>
     <string name="choose_language">Choose a language</string>
     <string name="new_language_hint">Enter the language name</string>
     <string name="language_already_exists">This language already exists</string>

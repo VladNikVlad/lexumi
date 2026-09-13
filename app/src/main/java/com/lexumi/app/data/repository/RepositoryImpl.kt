@@ -67,6 +67,14 @@ class LanguageRepositoryImpl @Inject constructor(private val dao: LanguageDao) :
     override suspend fun addLanguage(profileId: Long, name: String): Long =
         dao.insert(LanguageEntity(profileId = profileId, name = name))
     override suspend fun setVoice(languageId: Long, voiceName: String?) = dao.setVoice(languageId, voiceName)
+    override suspend fun renameLanguage(id: Long, name: String) {
+        val current = dao.getById(id) ?: return
+        dao.update(current.copy(name = name))
+    }
+    override suspend fun deleteLanguage(id: Long) {
+        val current = dao.getById(id) ?: return
+        dao.delete(current)
+    }
 }
 
 class SectionRepositoryImpl @Inject constructor(private val dao: SectionDao) : SectionRepository {

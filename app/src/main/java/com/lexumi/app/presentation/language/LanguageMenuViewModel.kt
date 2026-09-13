@@ -60,6 +60,28 @@ class LanguageMenuViewModel @Inject constructor(
         }
     }
 
+    /** Only meaningful for a language the user created themselves — renaming an admin-downloaded
+     * one would just get overwritten by the next background structure sync. */
+    fun renameLanguage(languageId: Long, name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch { languageRepository.renameLanguage(languageId, trimmed) }
+    }
+
+    /** If this was the currently selected language, clears that too — otherwise Splash would try
+     * to reopen a language that no longer exists (it does self-heal there, but no need to rely on
+     * that when we already know here that it's gone). */
+    fun deleteLanguage(languageId: Long) {
+        viewModelScope.launch {
+            if (prefs.selectedLanguageId.first() == languageId) {
+                prefs.clearSelectedLanguage()
+                prefs.clearLastSession()
+            }
+            languageRepository.deleteLanguage(languageId)
+            refreshDownloadable()
+        }
+    }
+
     /** Downloads an admin-published language into this profile's own local copy, then opens it.
      * Pulling in LATER changes to an already-downloaded language is no longer a manual action
      * here — HomeViewModel does it silently in the background as soon as the language is opened. */

@@ -86,8 +86,13 @@ fun LexumiNavGraph() {
 
         composable(Screen.AddLanguage.route) {
             AddLanguageScreen(
+                // A language created here is always purely local (never admin-downloaded) — its
+                // "Самостійне вивчення" can never have content, so Home's 3-mode screen would just
+                // be two dead ends. Go straight to "Власний матеріал" instead.
                 onCreated = { languageId ->
-                    navController.navigate(Screen.Home.build(languageId)) { popUpTo(Screen.LanguageMenu.route) { inclusive = true } }
+                    navController.navigate(Screen.Sections.build(languageId, adminMode = false)) {
+                        popUpTo(Screen.LanguageMenu.route) { inclusive = true }
+                    }
                 },
                 onBack = back,
             )

@@ -21,6 +21,13 @@ interface LanguageRepository {
     suspend fun exists(profileId: Long, name: String): Boolean
     suspend fun addLanguage(profileId: Long, name: String): Long
     suspend fun setVoice(languageId: Long, voiceName: String?)
+    /** Renames a language the user created themselves — never call this for an admin-downloaded
+     * one (`remoteId != null`), its name is overwritten again by the next background sync anyway. */
+    suspend fun renameLanguage(id: Long, name: String)
+    /** Deletes a language and everything under it (sections/topics/words/... all cascade via Room
+     * FKs) — for an admin-downloaded language this only removes the local copy, it reappears in
+     * [com.lexumi.app.data.sync.ContentSyncRepository.listDownloadableLanguages] afterwards. */
+    suspend fun deleteLanguage(id: Long)
 }
 
 interface SectionRepository {
