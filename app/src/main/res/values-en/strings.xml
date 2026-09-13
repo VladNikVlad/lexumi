@@ -68,6 +68,7 @@
     <string name="learn_sentences">Sentences</string>
     <string name="read_stories">Read text</string>
     <string name="add_more_content">+ Add more content to this topic</string>
+    <string name="offline_unavailable">This topic isn\'t available offline. Connect to the internet to open it.</string>
 
     <!-- Settings -->
     <string name="settings">Settings</string>

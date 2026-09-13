@@ -2,13 +2,17 @@ package com.lexumi.app.data.repository
 
 import com.lexumi.app.data.local.dao.*
 import com.lexumi.app.data.local.entity.*
+import com.lexumi.app.data.sync.ContentSyncRepository
+import com.lexumi.app.di.AppCoroutineScope
 import com.lexumi.app.domain.model.*
 import com.lexumi.app.domain.repository.*
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 // ---------- mappers ----------
@@ -110,6 +114,8 @@ class WordRepositoryImpl @Inject constructor(
     private val crossRefDao: WordTopicCrossRefDao,
     private val topicDao: TopicDao,
     private val sectionDao: SectionDao,
+    private val syncRepository: ContentSyncRepository,
+    @AppCoroutineScope private val appScope: CoroutineScope,
 ) : WordRepository {
 
     private suspend fun languageIdForTopic(topicId: Long): Long {
@@ -163,7 +169,11 @@ class WordRepositoryImpl @Inject constructor(
     }
 
     /** Progress-only — reads the current row and overwrites only rating/streak/review fields, so a
-     * topic-resolved `word.translation` can never leak into the shared `translations` list. */
+     * topic-resolved `word.translation` can never leak into the shared `translations` list. Also
+     * pushes the new progress to the server in the background for admin ("Самостійне вивчення")
+     * words — [ContentSyncRepository.pushWordProgress] no-ops for a personal word (no remoteId) —
+     * fired on [appScope], not this function's own caller scope, so leaving the study screen right
+     * after answering can't cancel it mid-flight. */
     override suspend fun updateWord(word: Word) {
         val current = dao.getById(word.id) ?: return
         dao.update(
@@ -175,6 +185,7 @@ class WordRepositoryImpl @Inject constructor(
                 totalCorrect = word.totalCorrect, bestStreak = word.bestStreak, currentStatsStreak = word.currentStatsStreak,
             )
         )
+        appScope.launch { syncRepository.pushWordProgress(word) }
     }
 
     override suspend fun editWord(topicId: Long, wordId: Long, term: String, translation: String, imagePath: String?, ruleId: Long?) {
@@ -276,6 +287,8 @@ class SentenceRepositoryImpl @Inject constructor(
     private val crossRefDao: SentenceTopicCrossRefDao,
     private val topicDao: TopicDao,
     private val sectionDao: SectionDao,
+    private val syncRepository: ContentSyncRepository,
+    @AppCoroutineScope private val appScope: CoroutineScope,
 ) : SentenceRepository {
 
     private suspend fun languageIdForTopic(topicId: Long): Long {
@@ -326,7 +339,7 @@ class SentenceRepositoryImpl @Inject constructor(
         return sentenceId
     }
 
-    /** Progress-only — see [WordRepositoryImpl.updateWord]. */
+    /** Progress-only — see [WordRepositoryImpl.updateWord] (same shape, including the background push). */
     override suspend fun updateStats(sentence: Sentence) {
         val current = dao.getById(sentence.id) ?: return
         dao.update(
@@ -337,6 +350,7 @@ class SentenceRepositoryImpl @Inject constructor(
                 currentStatsStreak = sentence.currentStatsStreak, known = sentence.known,
             )
         )
+        appScope.launch { syncRepository.pushSentenceProgress(sentence) }
     }
 
     override suspend fun editSentence(topicId: Long, sentenceId: Long, text: String, translations: List<String>, ruleIds: List<Long>) {

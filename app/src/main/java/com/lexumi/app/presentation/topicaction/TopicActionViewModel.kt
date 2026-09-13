@@ -3,12 +3,15 @@ package com.lexumi.app.presentation.topicaction
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lexumi.app.data.network.ConnectivityChecker
+import com.lexumi.app.data.sync.ContentSyncRepository
 import com.lexumi.app.domain.repository.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -31,6 +34,8 @@ class TopicActionViewModel @Inject constructor(
     storyRepository: StoryRepository,
     imageContentRepository: ImageContentRepository,
     topicRepository: TopicRepository,
+    private val syncRepository: ContentSyncRepository,
+    private val connectivityChecker: ConnectivityChecker,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -45,11 +50,40 @@ class TopicActionViewModel @Inject constructor(
     private val _canEdit = MutableStateFlow(false)
     val canEdit: StateFlow<Boolean> = _canEdit
 
+    // True once we've determined this is an admin topic with no local content AND no network to
+    // fetch it — TopicActionScreen shows "недоступно офлайн" instead of the action menu then.
+    // Stays false for "Власний матеріал" topics (always fully local, never gated).
+    private val _offlineUnavailable = MutableStateFlow(false)
+    val offlineUnavailable: StateFlow<Boolean> = _offlineUnavailable
+
     init {
         viewModelScope.launch {
             val topic = topicRepository.getTopic(topicId)
             _topicName.value = topic?.name.orEmpty()
-            _canEdit.value = topic?.remoteId == null
+            val isAdminTopic = topic?.remoteId != null
+            _canEdit.value = !isAdminTopic
+
+            // Opening this topic is what makes it "the one topic kept offline-ready" — evicts
+            // every other admin topic's cached content and (re)syncs this one, per the "Duolingo
+            // model" plan notes. Offline with nothing cached yet for this topic is the one case
+            // where there's genuinely nothing to show.
+            if (isAdminTopic) {
+                if (connectivityChecker.isOnline()) {
+                    runCatching {
+                        syncRepository.evictOtherTopicsContent(topicId)
+                        syncRepository.syncTopicContent(topicId)
+                    }
+                    _offlineUnavailable.value = false
+                } else {
+                    val hasLocalContent = wordRepository.getWords(topicId).isNotEmpty() ||
+                        sentenceRepository.getSentences(topicId).isNotEmpty() ||
+                        videoRepository.observeVideos(topicId).first().isNotEmpty() ||
+                        storyRepository.observeStories(topicId).first().isNotEmpty() ||
+                        imageContentRepository.observeImages(topicId).first().isNotEmpty() ||
+                        audioDialogRepository.observeDialogs(topicId).first().isNotEmpty()
+                    _offlineUnavailable.value = !hasLocalContent
+                }
+            }
         }
     }
 

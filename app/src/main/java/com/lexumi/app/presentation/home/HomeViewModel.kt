@@ -13,6 +13,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -61,25 +62,36 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch { refreshSelfStudyContent() }
     }
 
-    /** Best-effort background refresh of "Самостійне вивчення" content, run once whenever Home is
-     * reached for this language — for a returning user Splash navigates straight here
-     * (SplashViewModel.Home), so this is effectively "on app open", not something tied to which
-     * button the user happens to tap next. Previously this only ran from the "Самостійне
-     * вивчення" button's onClick, which meant "Продовжити навчання" (the button actually shown
-     * whenever a saved session exists — i.e. on every repeat visit) skipped it entirely, so a
-     * server-side deletion never got picked up during normal use. Doesn't block navigation — both
-     * mode screens read the same Room tables as Flows, so whatever this changes just shows up as
-     * it completes. Skipped entirely for a language that was never linked to the server
-     * (`remoteId == null`, e.g. a language created purely for "Власний матеріал") — otherwise
-     * every such user would see [syncError] on every launch for a call that can never succeed. A
-     * real failure is surfaced via [syncError] rather than swallowed, so a stuck stale topic has a
-     * visible reason instead of silently never updating — but nothing is shown while this just
-     * works, per design: the user should never need to notice an update is happening. */
+    /** Best-effort background sync of "Самостійне вивчення", run once whenever Home is reached for
+     * this language — for a returning user Splash navigates straight here (SplashViewModel.Home),
+     * so this is effectively "on app open", not something tied to which button the user happens to
+     * tap next (fixes an earlier version that only ran from the "Самостійне вивчення" button's
+     * onClick — skipped whenever "Продовжити навчання" was shown instead, i.e. on every repeat
+     * visit, so a server-side deletion never got picked up during normal use).
+     *
+     * Deliberately NOT a full [ContentSyncRepository.refreshLanguage] — that walks every topic's
+     * content up front (dozens to hundreds of requests, what made adding/opening a language slow).
+     * Instead: sync just the navigational structure (cheap), evict any topic's cached content
+     * except whichever one is the current [UserPreferences.lastSession] (so at most one topic is
+     * ever offline-ready — see the plan notes on why), and if there IS a last session, sync that
+     * one topic's content right away so it's ready before the user even taps into it.
+     *
+     * Skipped entirely for a language never linked to the server (`remoteId == null`, e.g. a
+     * language created purely for "Власний матеріал") — otherwise every such user would see
+     * [syncError] on every launch for a call that can never succeed. A real failure IS surfaced via
+     * [syncError] so a stuck stale topic has a visible reason instead of silently never updating —
+     * but nothing is shown while this just works, per design: the user should never need to notice
+     * an update is happening. */
     private suspend fun refreshSelfStudyContent() {
         val language = languageRepository.getLanguage(languageId)
         if (language?.remoteId == null) return
         if (!connectivityChecker.isOnline()) return
-        val result = runCatching { syncRepository.refreshLanguage(languageId) }
+        val result = runCatching {
+            syncRepository.syncLanguageStructure(languageId)
+            val lastTopicId = prefs.lastSession.first()?.topicId
+            syncRepository.evictStaleTopicContent(languageId, lastTopicId)
+            if (lastTopicId != null) syncRepository.syncTopicContent(lastTopicId)
+        }
         if (result.isFailure) {
             _syncError.value = "Не вдалося оновити: ${sanitizeSyncError(result.exceptionOrNull()?.message)}"
         }

@@ -49,6 +49,7 @@ fun TopicActionScreen(
     val availability by viewModel.availability.collectAsState()
     val topicName by viewModel.topicName.collectAsState()
     val canEdit by viewModel.canEdit.collectAsState()
+    val offlineUnavailable by viewModel.offlineUnavailable.collectAsState()
 
     GradientBackground {
         BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
@@ -66,17 +67,25 @@ fun TopicActionScreen(
             androidx.compose.material3.Text(text = topicName, style = androidx.compose.material3.MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(20.dp))
 
-            PillActionButton(text = stringResource(R.string.learn_rules), icon = Icons.Filled.MenuBook, onClick = onLearnRules, modifier = spacing)
-            if (availability.hasWords) PillActionButton(text = stringResource(R.string.learn_words), icon = Icons.Filled.Edit, onClick = onLearnWords, modifier = spacing)
-            if (availability.hasVideos) PillActionButton(text = stringResource(R.string.watch_video), icon = Icons.Filled.PlayArrow, onClick = onWatchVideo, modifier = spacing)
-            if (availability.hasAudio) PillActionButton(text = stringResource(R.string.listen_dialogs), icon = Icons.Filled.Headphones, onClick = onListenDialogs, modifier = spacing)
-            if (availability.hasStories) PillActionButton(text = stringResource(R.string.read_stories), icon = Icons.Filled.AutoStories, onClick = onReadStories, modifier = spacing)
-            if (availability.hasImages) PillActionButton(text = stringResource(R.string.image_tests), icon = Icons.Filled.ViewModule, onClick = onImageTests, modifier = spacing)
-            if (availability.hasSentences) PillActionButton(text = stringResource(R.string.learn_sentences), icon = Icons.Filled.TextFields, onClick = onSentences, modifier = spacing)
+            if (offlineUnavailable) {
+                androidx.compose.material3.Text(
+                    text = stringResource(R.string.offline_unavailable),
+                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            } else {
+                PillActionButton(text = stringResource(R.string.learn_rules), icon = Icons.Filled.MenuBook, onClick = onLearnRules, modifier = spacing)
+                if (availability.hasWords) PillActionButton(text = stringResource(R.string.learn_words), icon = Icons.Filled.Edit, onClick = onLearnWords, modifier = spacing)
+                if (availability.hasVideos) PillActionButton(text = stringResource(R.string.watch_video), icon = Icons.Filled.PlayArrow, onClick = onWatchVideo, modifier = spacing)
+                if (availability.hasAudio) PillActionButton(text = stringResource(R.string.listen_dialogs), icon = Icons.Filled.Headphones, onClick = onListenDialogs, modifier = spacing)
+                if (availability.hasStories) PillActionButton(text = stringResource(R.string.read_stories), icon = Icons.Filled.AutoStories, onClick = onReadStories, modifier = spacing)
+                if (availability.hasImages) PillActionButton(text = stringResource(R.string.image_tests), icon = Icons.Filled.ViewModule, onClick = onImageTests, modifier = spacing)
+                if (availability.hasSentences) PillActionButton(text = stringResource(R.string.learn_sentences), icon = Icons.Filled.TextFields, onClick = onSentences, modifier = spacing)
 
-            if (canEdit) {
-                androidx.compose.material3.TextButton(onClick = onAddContent) {
-                    androidx.compose.material3.Text(stringResource(R.string.add_more_content))
+                if (canEdit) {
+                    androidx.compose.material3.TextButton(onClick = onAddContent) {
+                        androidx.compose.material3.Text(stringResource(R.string.add_more_content))
+                    }
                 }
             }
         }

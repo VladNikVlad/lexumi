@@ -31,8 +31,11 @@ import com.lexumi.app.data.local.entity.TopicEntity
 import com.lexumi.app.data.local.entity.VideoEntity
 import com.lexumi.app.data.local.entity.WordEntity
 import com.lexumi.app.data.local.entity.WordTopicCrossRefEntity
+import com.lexumi.app.domain.model.Sentence
+import com.lexumi.app.domain.model.Word
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.storage.storage
@@ -208,6 +211,79 @@ private data class RemoteAudioDialogRow(
     @SerialName("translation_text") val translationText: String? = null,
     @SerialName("rule_ids") val ruleIds: String? = null,
     @SerialName("audio_path") val audioPath: String,
+)
+
+/** Per-user progress, kept OFF the shared `words` row (that row is one global admin-authored
+ * record shared by every user who studies it — writing rating/streaks onto it directly would mean
+ * every user overwrites every other user's progress). `word_id`/`user_id` together are unique on
+ * the server; `id`/`userId` are omitted here since they're never needed client-side (RLS already
+ * scopes every read/write to `auth.uid()`, and upserts key on `(user_id, word_id)`). */
+@Serializable
+private data class RemoteWordProgressRow(
+    @SerialName("word_id") val wordId: String,
+    val rating: Int = 0,
+    @SerialName("correct_streak") val correctStreak: Int = 0,
+    @SerialName("typed_streak") val typedStreak: Int = 0,
+    @SerialName("typed_reverse_active") val typedReverseActive: Boolean = false,
+    @SerialName("voice_streak") val voiceStreak: Int = 0,
+    @SerialName("final_streak") val finalStreak: Int = 0,
+    @SerialName("times_seen") val timesSeen: Int = 0,
+    @SerialName("in_review_list") val inReviewList: Boolean = false,
+    @SerialName("total_correct") val totalCorrect: Int = 0,
+    @SerialName("best_streak") val bestStreak: Int = 0,
+    @SerialName("current_stats_streak") val currentStatsStreak: Int = 0,
+)
+
+/** Mirrors [RemoteWordProgressRow] for sentences — see its doc comment. */
+@Serializable
+private data class RemoteSentenceProgressRow(
+    @SerialName("sentence_id") val sentenceId: String,
+    val rating: Int = 0,
+    @SerialName("direct_streak") val directStreak: Int = 0,
+    @SerialName("reverse_streak") val reverseStreak: Int = 0,
+    @SerialName("audio_streak") val audioStreak: Int = 0,
+    @SerialName("voice_streak") val voiceStreak: Int = 0,
+    @SerialName("times_seen") val timesSeen: Int = 0,
+    @SerialName("total_correct") val totalCorrect: Int = 0,
+    @SerialName("best_streak") val bestStreak: Int = 0,
+    @SerialName("current_stats_streak") val currentStatsStreak: Int = 0,
+    val known: Boolean = false,
+)
+
+/** [RemoteWordProgressRow] plus `user_id` — needed only when WRITING a row (the read side relies
+ * on RLS to already scope every SELECT to `auth.uid()`, so it never needs to decode this field). */
+@Serializable
+private data class RemoteWordProgressUpsert(
+    @SerialName("user_id") val userId: String,
+    @SerialName("word_id") val wordId: String,
+    val rating: Int,
+    @SerialName("correct_streak") val correctStreak: Int,
+    @SerialName("typed_streak") val typedStreak: Int,
+    @SerialName("typed_reverse_active") val typedReverseActive: Boolean,
+    @SerialName("voice_streak") val voiceStreak: Int,
+    @SerialName("final_streak") val finalStreak: Int,
+    @SerialName("times_seen") val timesSeen: Int,
+    @SerialName("in_review_list") val inReviewList: Boolean,
+    @SerialName("total_correct") val totalCorrect: Int,
+    @SerialName("best_streak") val bestStreak: Int,
+    @SerialName("current_stats_streak") val currentStatsStreak: Int,
+)
+
+/** Mirrors [RemoteWordProgressUpsert] for sentences. */
+@Serializable
+private data class RemoteSentenceProgressUpsert(
+    @SerialName("user_id") val userId: String,
+    @SerialName("sentence_id") val sentenceId: String,
+    val rating: Int,
+    @SerialName("direct_streak") val directStreak: Int,
+    @SerialName("reverse_streak") val reverseStreak: Int,
+    @SerialName("audio_streak") val audioStreak: Int,
+    @SerialName("voice_streak") val voiceStreak: Int,
+    @SerialName("times_seen") val timesSeen: Int,
+    @SerialName("total_correct") val totalCorrect: Int,
+    @SerialName("best_streak") val bestStreak: Int,
+    @SerialName("current_stats_streak") val currentStatsStreak: Int,
+    val known: Boolean,
 )
 
 /** Decodes the `select(Columns.list("id"))` response after an insert — only `id` comes back, so
@@ -573,9 +649,11 @@ class ContentSyncRepository @Inject constructor(
         }
     }
 
-    /** Downloads one published language (and everything under it) into this profile's own local
-     * copy — from then on it behaves exactly like anything created locally, with its own
-     * progress that starts fresh at rating 0. */
+    /** Downloads one published language's STRUCTURE (sections/topics — names, positions) into this
+     * profile's own local copy — deliberately NOT its topics' content (words/videos/etc.), which is
+     * what made this slow for a content-heavy language before. A topic's content is synced on
+     * demand by [syncTopicContent] the moment it's actually opened, so adding a language stays fast
+     * regardless of how much is published under it. */
     suspend fun downloadLanguage(remoteLanguageId: String, profileId: Long): Long {
         val languageRow = supabase.from("languages")
             .select(Columns.list("id", "name", "voice_name")) { filter { eq("id", remoteLanguageId) } }
@@ -583,53 +661,6 @@ class ContentSyncRepository @Inject constructor(
         val localLanguageId = languageDao.insert(
             LanguageEntity(profileId = profileId, name = languageRow.name, voiceName = languageRow.voiceName, remoteId = remoteLanguageId),
         )
-
-        val remoteRules = supabase.from("rules")
-            .select(Columns.list("id", "name", "text", "image_data")) { filter { eq("language_id", remoteLanguageId) } }
-            .decodeList<RemoteRuleRow>()
-        val ruleIdMap = mutableMapOf<String, Long>() // remote uuid -> local id
-        for (ruleRow in remoteRules) {
-            val remoteRuleId = requireNotNull(ruleRow.id)
-            val localRuleId = ruleDao.insert(
-                RuleEntity(
-                    languageId = localLanguageId, name = ruleRow.name, text = ruleRow.text,
-                    imagePath = decodeImageToFile(context, ruleRow.imageData, "rule"), remoteId = remoteRuleId,
-                ),
-            )
-            ruleIdMap[remoteRuleId] = localRuleId
-        }
-
-        val remoteWords = supabase.from("words")
-            .select(Columns.list("id", "term", "translations", "rule_id", "image_data")) { filter { eq("language_id", remoteLanguageId) } }
-            .decodeList<RemoteWordRow>()
-        val wordIdMap = mutableMapOf<String, Long>() // remote uuid -> local id
-        for (wordRow in remoteWords) {
-            val remoteWordId = requireNotNull(wordRow.id)
-            val localWordId = wordDao.insert(
-                WordEntity(
-                    languageId = localLanguageId, term = wordRow.term, translations = wordRow.translations.split(LIST_SEPARATOR),
-                    ruleId = wordRow.ruleId?.let { ruleIdMap[it] }, imagePath = decodeImageToFile(context, wordRow.imageData, "word"),
-                    remoteId = remoteWordId,
-                ),
-            )
-            wordIdMap[remoteWordId] = localWordId
-        }
-
-        val remoteSentences = supabase.from("sentences")
-            .select(Columns.list("id", "text", "translations", "rule_ids")) { filter { eq("language_id", remoteLanguageId) } }
-            .decodeList<RemoteSentenceRow>()
-        val sentenceIdMap = mutableMapOf<String, Long>()
-        for (sentenceRow in remoteSentences) {
-            val remoteSentenceId = requireNotNull(sentenceRow.id)
-            val localSentenceId = sentenceDao.insert(
-                SentenceEntity(
-                    languageId = localLanguageId, text = sentenceRow.text,
-                    translations = sentenceRow.translations.split(LIST_SEPARATOR),
-                    ruleIds = sentenceRow.ruleIds.toLocalRuleIds(ruleIdMap), remoteId = remoteSentenceId,
-                ),
-            )
-            sentenceIdMap[remoteSentenceId] = localSentenceId
-        }
 
         val sections = supabase.from("sections")
             .select(Columns.list("id", "name", "position")) { filter { eq("language_id", remoteLanguageId) } }
@@ -644,128 +675,9 @@ class ContentSyncRepository @Inject constructor(
                 .select(Columns.list("id", "name", "position")) { filter { eq("section_id", remoteSectionId) } }
                 .decodeList<RemoteTopicRow>()
             for (topicRow in topics) {
-                val remoteTopicId = requireNotNull(topicRow.id)
-                val localTopicId = topicDao.insert(
-                    TopicEntity(sectionId = localSectionId, name = topicRow.name, position = topicRow.position, remoteId = remoteTopicId),
+                topicDao.insert(
+                    TopicEntity(sectionId = localSectionId, name = topicRow.name, position = topicRow.position, remoteId = requireNotNull(topicRow.id)),
                 )
-
-                val topicWords = supabase.from("topic_words")
-                    .select(Columns.list("id", "word_id", "translation_override", "position")) { filter { eq("topic_id", remoteTopicId) } }
-                    .decodeList<RemoteTopicWordRow>()
-                for (linkRow in topicWords) {
-                    val localWordId = wordIdMap[linkRow.wordId] ?: continue
-                    wordTopicCrossRefDao.insert(
-                        WordTopicCrossRefEntity(
-                            topicId = localTopicId, wordId = localWordId, translationOverride = linkRow.translationOverride,
-                            position = linkRow.position, remoteId = requireNotNull(linkRow.id),
-                        ),
-                    )
-                }
-
-                val topicSentences = supabase.from("topic_sentences")
-                    .select(Columns.list("id", "sentence_id", "translations_override", "position")) { filter { eq("topic_id", remoteTopicId) } }
-                    .decodeList<RemoteTopicSentenceRow>()
-                for (linkRow in topicSentences) {
-                    val localSentenceId = sentenceIdMap[linkRow.sentenceId] ?: continue
-                    sentenceTopicCrossRefDao.insert(
-                        SentenceTopicCrossRefEntity(
-                            topicId = localTopicId, sentenceId = localSentenceId,
-                            translationsOverride = linkRow.translationsOverride?.split(LIST_SEPARATOR),
-                            position = linkRow.position, remoteId = requireNotNull(linkRow.id),
-                        ),
-                    )
-                }
-
-                val videos = supabase.from("videos")
-                    .select(Columns.list("id", "name", "youtube_url", "original_text", "translation_text", "rule_ids")) {
-                        filter { eq("topic_id", remoteTopicId) }
-                    }
-                    .decodeList<RemoteVideoRow>()
-                for (videoRow in videos) {
-                    val remoteVideoId = requireNotNull(videoRow.id)
-                    val localVideoId = videoDao.insert(
-                        VideoEntity(
-                            topicId = localTopicId, name = videoRow.name, youtubeUrl = videoRow.youtubeUrl,
-                            originalText = videoRow.originalText, translationText = videoRow.translationText,
-                            ruleIds = videoRow.ruleIds.toLocalRuleIds(ruleIdMap), remoteId = remoteVideoId,
-                        ),
-                    )
-
-                    val questions = supabase.from("test_questions")
-                        .select(Columns.list("id", "question_text", "answer_type", "correct_boolean", "acceptable_answers")) {
-                            filter { eq("video_id", remoteVideoId) }
-                        }
-                        .decodeList<RemoteTestQuestionRow>()
-                    for (questionRow in questions) {
-                        testQuestionDao.insert(
-                            TestQuestionEntity(
-                                ownerType = QuestionOwnerType.VIDEO, ownerId = localVideoId, questionText = questionRow.questionText,
-                                answerType = if (questionRow.answerType == AnswerType.TRUE_FALSE.name) AnswerType.TRUE_FALSE else AnswerType.EXACT_TEXT,
-                                correctBoolean = questionRow.correctBoolean,
-                                acceptableAnswers = questionRow.acceptableAnswers?.split(LIST_SEPARATOR) ?: emptyList(),
-                                remoteId = questionRow.id,
-                            ),
-                        )
-                    }
-                }
-
-                val stories = supabase.from("stories")
-                    .select(Columns.list("id", "name", "text", "translation", "rule_ids")) { filter { eq("topic_id", remoteTopicId) } }
-                    .decodeList<RemoteStoryRow>()
-                for (storyRow in stories) {
-                    storyDao.insert(
-                        StoryEntity(
-                            topicId = localTopicId, name = storyRow.name, text = storyRow.text, translation = storyRow.translation,
-                            ruleIds = storyRow.ruleIds.toLocalRuleIds(ruleIdMap), remoteId = storyRow.id,
-                        ),
-                    )
-                }
-
-                val images = supabase.from("image_content")
-                    .select(Columns.list("id", "name", "translation", "image_data")) { filter { eq("topic_id", remoteTopicId) } }
-                    .decodeList<RemoteImageContentRow>()
-                for (imageRow in images) {
-                    val localPath = decodeImageToFile(context, imageRow.imageData, "image") ?: continue
-                    imageContentDao.insert(
-                        ImageContentEntity(
-                            topicId = localTopicId, name = imageRow.name, imagePath = localPath,
-                            translation = imageRow.translation, remoteId = imageRow.id,
-                        ),
-                    )
-                }
-
-                val dialogs = supabase.from("audio_dialogs")
-                    .select(Columns.list("id", "name", "translation_text", "rule_ids", "audio_path")) { filter { eq("topic_id", remoteTopicId) } }
-                    .decodeList<RemoteAudioDialogRow>()
-                for (dialogRow in dialogs) {
-                    val remoteDialogId = requireNotNull(dialogRow.id)
-                    val bytes = runCatching { supabase.storage.from(AUDIO_BUCKET).downloadPublic(dialogRow.audioPath) }.getOrNull()
-                        ?: continue // couldn't fetch the audio file, skip this dialog rather than create a broken local row
-                    val localDialogId = audioDialogDao.insert(
-                        AudioDialogEntity(
-                            topicId = localTopicId, name = dialogRow.name, audioPath = saveBytesToFile(context, bytes, "audio", "mp3"),
-                            translationText = dialogRow.translationText, ruleIds = dialogRow.ruleIds.toLocalRuleIds(ruleIdMap),
-                            remoteId = remoteDialogId,
-                        ),
-                    )
-
-                    val questions = supabase.from("test_questions")
-                        .select(Columns.list("id", "question_text", "answer_type", "correct_boolean", "acceptable_answers")) {
-                            filter { eq("audio_dialog_id", remoteDialogId) }
-                        }
-                        .decodeList<RemoteTestQuestionRow>()
-                    for (questionRow in questions) {
-                        testQuestionDao.insert(
-                            TestQuestionEntity(
-                                ownerType = QuestionOwnerType.AUDIO_DIALOG, ownerId = localDialogId, questionText = questionRow.questionText,
-                                answerType = if (questionRow.answerType == AnswerType.TRUE_FALSE.name) AnswerType.TRUE_FALSE else AnswerType.EXACT_TEXT,
-                                correctBoolean = questionRow.correctBoolean,
-                                acceptableAnswers = questionRow.acceptableAnswers?.split(LIST_SEPARATOR) ?: emptyList(),
-                                remoteId = questionRow.id,
-                            ),
-                        )
-                    }
-                }
             }
         }
         return localLanguageId
@@ -852,22 +764,60 @@ class ContentSyncRepository @Inject constructor(
         }
     }
 
+    /** Upserts one already-fetched rule row by remoteId, returning its local id — shared by the
+     * full-language [refreshRules] and the single-topic [syncTopicContent], so both get the exact
+     * same merge behavior (content updated in place, no new local id) without duplicating it. */
+    private suspend fun upsertRuleRow(localLanguageId: Long, ruleRow: RemoteRuleRow): Long {
+        val remoteRuleId = requireNotNull(ruleRow.id)
+        val existing = ruleDao.getByRemoteId(remoteRuleId)
+        val imagePath = decodeImageToFile(context, ruleRow.imageData, "rule")
+        return if (existing != null) {
+            ruleDao.update(existing.copy(name = ruleRow.name, text = ruleRow.text, imagePath = imagePath))
+            existing.id
+        } else {
+            ruleDao.insert(RuleEntity(languageId = localLanguageId, name = ruleRow.name, text = ruleRow.text, imagePath = imagePath, remoteId = remoteRuleId))
+        }
+    }
+
+    /** Mirrors [upsertRuleRow] for words — content only, rating/streaks/timesSeen etc. are
+     * deliberately untouched (see [pullProgress] for how those actually get updated). */
+    private suspend fun upsertWordRow(localLanguageId: Long, wordRow: RemoteWordRow, ruleIdMap: Map<String, Long>): Long {
+        val remoteWordId = requireNotNull(wordRow.id)
+        val existing = wordDao.getByRemoteId(remoteWordId)
+        val translations = wordRow.translations.split(LIST_SEPARATOR)
+        val ruleId = wordRow.ruleId?.let { ruleIdMap[it] }
+        val imagePath = decodeImageToFile(context, wordRow.imageData, "word")
+        return if (existing != null) {
+            wordDao.update(existing.copy(term = wordRow.term, translations = translations, ruleId = ruleId, imagePath = imagePath))
+            existing.id
+        } else {
+            wordDao.insert(
+                WordEntity(languageId = localLanguageId, term = wordRow.term, translations = translations, ruleId = ruleId, imagePath = imagePath, remoteId = remoteWordId),
+            )
+        }
+    }
+
+    /** Mirrors [upsertRuleRow] for sentences. */
+    private suspend fun upsertSentenceRow(localLanguageId: Long, sentenceRow: RemoteSentenceRow, ruleIdMap: Map<String, Long>): Long {
+        val remoteSentenceId = requireNotNull(sentenceRow.id)
+        val existing = sentenceDao.getByRemoteId(remoteSentenceId)
+        val translations = sentenceRow.translations.split(LIST_SEPARATOR)
+        val ruleIds = sentenceRow.ruleIds.toLocalRuleIds(ruleIdMap)
+        return if (existing != null) {
+            sentenceDao.update(existing.copy(text = sentenceRow.text, translations = translations, ruleIds = ruleIds))
+            existing.id
+        } else {
+            sentenceDao.insert(SentenceEntity(languageId = localLanguageId, text = sentenceRow.text, translations = translations, ruleIds = ruleIds, remoteId = remoteSentenceId))
+        }
+    }
+
     private suspend fun refreshRules(localLanguageId: Long, remoteLanguageId: String): Map<String, Long> {
         val remoteRules = supabase.from("rules")
             .select(Columns.list("id", "name", "text", "image_data")) { filter { eq("language_id", remoteLanguageId) } }
             .decodeList<RemoteRuleRow>()
         val ruleIdMap = mutableMapOf<String, Long>()
         for (ruleRow in remoteRules) {
-            val remoteRuleId = requireNotNull(ruleRow.id)
-            val existing = ruleDao.getByRemoteId(remoteRuleId)
-            val imagePath = decodeImageToFile(context, ruleRow.imageData, "rule")
-            val localId = if (existing != null) {
-                ruleDao.update(existing.copy(name = ruleRow.name, text = ruleRow.text, imagePath = imagePath))
-                existing.id
-            } else {
-                ruleDao.insert(RuleEntity(languageId = localLanguageId, name = ruleRow.name, text = ruleRow.text, imagePath = imagePath, remoteId = remoteRuleId))
-            }
-            ruleIdMap[remoteRuleId] = localId
+            ruleIdMap[requireNotNull(ruleRow.id)] = upsertRuleRow(localLanguageId, ruleRow)
         }
         val remoteRuleIds = remoteRules.mapNotNull { it.id }.toSet()
         for (localRule in ruleDao.getForLanguage(localLanguageId)) {
@@ -882,21 +832,7 @@ class ContentSyncRepository @Inject constructor(
             .decodeList<RemoteWordRow>()
         val wordIdMap = mutableMapOf<String, Long>()
         for (wordRow in remoteWords) {
-            val remoteWordId = requireNotNull(wordRow.id)
-            val existing = wordDao.getByRemoteId(remoteWordId)
-            val translations = wordRow.translations.split(LIST_SEPARATOR)
-            val ruleId = wordRow.ruleId?.let { ruleIdMap[it] }
-            val imagePath = decodeImageToFile(context, wordRow.imageData, "word")
-            val localId = if (existing != null) {
-                // Content only — rating/streaks/timesSeen etc. are deliberately untouched.
-                wordDao.update(existing.copy(term = wordRow.term, translations = translations, ruleId = ruleId, imagePath = imagePath))
-                existing.id
-            } else {
-                wordDao.insert(
-                    WordEntity(languageId = localLanguageId, term = wordRow.term, translations = translations, ruleId = ruleId, imagePath = imagePath, remoteId = remoteWordId),
-                )
-            }
-            wordIdMap[remoteWordId] = localId
+            wordIdMap[requireNotNull(wordRow.id)] = upsertWordRow(localLanguageId, wordRow, ruleIdMap)
         }
         val remoteWordIds = remoteWords.mapNotNull { it.id }.toSet()
         for (localWord in wordDao.getForLanguage(localLanguageId)) {
@@ -911,17 +847,7 @@ class ContentSyncRepository @Inject constructor(
             .decodeList<RemoteSentenceRow>()
         val sentenceIdMap = mutableMapOf<String, Long>()
         for (sentenceRow in remoteSentences) {
-            val remoteSentenceId = requireNotNull(sentenceRow.id)
-            val existing = sentenceDao.getByRemoteId(remoteSentenceId)
-            val translations = sentenceRow.translations.split(LIST_SEPARATOR)
-            val ruleIds = sentenceRow.ruleIds.toLocalRuleIds(ruleIdMap)
-            val localId = if (existing != null) {
-                sentenceDao.update(existing.copy(text = sentenceRow.text, translations = translations, ruleIds = ruleIds))
-                existing.id
-            } else {
-                sentenceDao.insert(SentenceEntity(languageId = localLanguageId, text = sentenceRow.text, translations = translations, ruleIds = ruleIds, remoteId = remoteSentenceId))
-            }
-            sentenceIdMap[remoteSentenceId] = localId
+            sentenceIdMap[requireNotNull(sentenceRow.id)] = upsertSentenceRow(localLanguageId, sentenceRow, ruleIdMap)
         }
         val remoteSentenceIds = remoteSentences.mapNotNull { it.id }.toSet()
         for (localSentence in sentenceDao.getForLanguage(localLanguageId)) {
@@ -1109,5 +1035,292 @@ class ContentSyncRepository @Inject constructor(
                 audioDialogDao.delete(localDialog)
             }
         }
+    }
+
+    // ============================================================================================
+    // On-demand per-topic sync ("Duolingo model") — see the plan notes for why this exists: a full
+    // downloadLanguage/refreshLanguage walks every topic's content up front (dozens to hundreds of
+    // sequential requests even for a small language), which is what made adding/opening a language
+    // slow. Below, [downloadLanguage] only ever syncs the navigational structure (instant), and a
+    // topic's actual content (words/videos/etc.) is synced by [syncTopicContent] the moment it's
+    // actually opened — [syncLanguageStructure] keeps just that structure fresh on every app open,
+    // and [evictStaleTopicContent]/[evictOtherTopicsContent] delete a topic's cached content again
+    // once it's no longer the one topic kept available offline.
+    // ============================================================================================
+
+    /** Keeps just the navigational tree (sections/topics — names, positions, which still exist) in
+     * sync — cheap enough to run automatically on every app open (HomeViewModel does), unlike a
+     * full [refreshLanguage]. Topic CONTENT is deliberately untouched here; that's
+     * [syncTopicContent]'s job, run on demand once a topic is actually opened. Mirrors
+     * [refreshLanguage]'s section/topic loop exactly — just without the rules/words/sentences pass
+     * before it. */
+    suspend fun syncLanguageStructure(localLanguageId: Long) {
+        val language = languageDao.getById(localLanguageId) ?: return
+        val remoteLanguageId = language.remoteId ?: return
+
+        val languageRow = supabase.from("languages")
+            .select(Columns.list("id", "name", "voice_name")) { filter { eq("id", remoteLanguageId) } }
+            .decodeSingle<RemoteLanguageRow>()
+        languageDao.update(language.copy(name = languageRow.name, voiceName = languageRow.voiceName))
+
+        val sections = supabase.from("sections")
+            .select(Columns.list("id", "name", "position")) { filter { eq("language_id", remoteLanguageId) } }
+            .decodeList<RemoteSectionRow>()
+        for (sectionRow in sections) {
+            val remoteSectionId = requireNotNull(sectionRow.id)
+            val existingSection = sectionDao.getByRemoteId(remoteSectionId)
+            val localSectionId = if (existingSection != null) {
+                sectionDao.update(existingSection.copy(name = sectionRow.name, position = sectionRow.position))
+                existingSection.id
+            } else {
+                sectionDao.insert(SectionEntity(languageId = localLanguageId, name = sectionRow.name, position = sectionRow.position, remoteId = remoteSectionId))
+            }
+
+            val topics = supabase.from("topics")
+                .select(Columns.list("id", "name", "position")) { filter { eq("section_id", remoteSectionId) } }
+                .decodeList<RemoteTopicRow>()
+            for (topicRow in topics) {
+                val remoteTopicId = requireNotNull(topicRow.id)
+                val existingTopic = topicDao.getByRemoteId(remoteTopicId)
+                if (existingTopic != null) {
+                    topicDao.update(existingTopic.copy(name = topicRow.name, position = topicRow.position))
+                } else {
+                    topicDao.insert(TopicEntity(sectionId = localSectionId, name = topicRow.name, position = topicRow.position, remoteId = remoteTopicId))
+                }
+            }
+            // A whole topic removed server-side — Room's ON DELETE CASCADE takes care of everything
+            // nested under it (see refreshLanguage's identical comment for the test_questions caveat).
+            val remoteTopicIds = topics.mapNotNull { it.id }.toSet()
+            for (localTopic in topicDao.getForSection(localSectionId)) {
+                if (localTopic.remoteId != null && localTopic.remoteId !in remoteTopicIds) topicDao.delete(localTopic)
+            }
+        }
+        val remoteSectionIds = sections.mapNotNull { it.id }.toSet()
+        for (localSection in sectionDao.getForLanguage(localLanguageId)) {
+            if (localSection.remoteId != null && localSection.remoteId !in remoteSectionIds) sectionDao.delete(localSection)
+        }
+    }
+
+    /** Syncs exactly one admin topic's content — only the words/sentences/rules it actually
+     * references (via two `.in("id", ...)` lookups, not the whole language's word bank), plus the
+     * videos/stories/images/audio it owns, plus this user's own progress for the words/sentences
+     * involved (see [pullProgress]). Safe to call again for an already-synced topic — same
+     * upsert-by-remoteId merge [refreshLanguage] uses, just scoped to this one topic. Re-fetching
+     * topic_words/videos/etc a second time inside [refreshTopicWords] etc. below is a deliberate,
+     * small duplication — reusing those already-correct functions outweighs the extra handful of
+     * cheap requests for a single topic (this is NOT the "hundreds of requests" problem, which only
+     * ever came from doing this for EVERY topic of a language at once). */
+    suspend fun syncTopicContent(localTopicId: Long) {
+        val topic = topicDao.getById(localTopicId) ?: return
+        val remoteTopicId = topic.remoteId ?: return
+        val section = sectionDao.getById(topic.sectionId) ?: return
+        val localLanguageId = section.languageId
+
+        val topicWords = supabase.from("topic_words")
+            .select(Columns.list("id", "word_id", "translation_override", "position")) { filter { eq("topic_id", remoteTopicId) } }
+            .decodeList<RemoteTopicWordRow>()
+        val topicSentences = supabase.from("topic_sentences")
+            .select(Columns.list("id", "sentence_id", "translations_override", "position")) { filter { eq("topic_id", remoteTopicId) } }
+            .decodeList<RemoteTopicSentenceRow>()
+        val videos = supabase.from("videos")
+            .select(Columns.list("id", "name", "youtube_url", "original_text", "translation_text", "rule_ids")) { filter { eq("topic_id", remoteTopicId) } }
+            .decodeList<RemoteVideoRow>()
+        val stories = supabase.from("stories")
+            .select(Columns.list("id", "name", "text", "translation", "rule_ids")) { filter { eq("topic_id", remoteTopicId) } }
+            .decodeList<RemoteStoryRow>()
+        val audioDialogs = supabase.from("audio_dialogs")
+            .select(Columns.list("id", "name", "translation_text", "rule_ids", "audio_path")) { filter { eq("topic_id", remoteTopicId) } }
+            .decodeList<RemoteAudioDialogRow>()
+
+        val wordIds = topicWords.map { it.wordId }.distinct()
+        val remoteWords = if (wordIds.isEmpty()) emptyList() else supabase.from("words")
+            .select(Columns.list("id", "term", "translations", "rule_id", "image_data")) { filter { isIn("id", wordIds) } }
+            .decodeList<RemoteWordRow>()
+        val sentenceIds = topicSentences.map { it.sentenceId }.distinct()
+        val remoteSentences = if (sentenceIds.isEmpty()) emptyList() else supabase.from("sentences")
+            .select(Columns.list("id", "text", "translations", "rule_ids")) { filter { isIn("id", sentenceIds) } }
+            .decodeList<RemoteSentenceRow>()
+
+        val ruleIds = (
+            remoteWords.mapNotNull { it.ruleId } +
+                remoteSentences.flatMap { it.ruleIds?.split(",") ?: emptyList() } +
+                videos.flatMap { it.ruleIds?.split(",") ?: emptyList() } +
+                stories.flatMap { it.ruleIds?.split(",") ?: emptyList() } +
+                audioDialogs.flatMap { it.ruleIds?.split(",") ?: emptyList() }
+            ).distinct()
+        val remoteRules = if (ruleIds.isEmpty()) emptyList() else supabase.from("rules")
+            .select(Columns.list("id", "name", "text", "image_data")) { filter { isIn("id", ruleIds) } }
+            .decodeList<RemoteRuleRow>()
+
+        val ruleIdMap = remoteRules.associate { requireNotNull(it.id) to upsertRuleRow(localLanguageId, it) }
+        val wordIdMap = remoteWords.associate { requireNotNull(it.id) to upsertWordRow(localLanguageId, it, ruleIdMap) }
+        val sentenceIdMap = remoteSentences.associate { requireNotNull(it.id) to upsertSentenceRow(localLanguageId, it, ruleIdMap) }
+
+        refreshTopicWords(localTopicId, remoteTopicId, wordIdMap)
+        refreshTopicSentences(localTopicId, remoteTopicId, sentenceIdMap)
+        refreshVideos(localTopicId, remoteTopicId, ruleIdMap)
+        refreshStories(localTopicId, remoteTopicId, ruleIdMap)
+        refreshImages(localTopicId, remoteTopicId)
+        refreshAudioDialogs(localTopicId, remoteTopicId, ruleIdMap)
+
+        pullProgress(wordIdMap, sentenceIdMap)
+    }
+
+    /** Pulls this user's own rating/streak fields for the words/sentences just synced by
+     * [syncTopicContent] from `word_progress`/`sentence_progress` (see those tables' own doc
+     * comments in backend/word_sentence_progress.sql for why progress can't live on the shared
+     * admin row) and applies them to the local rows. A word/sentence with no progress row yet just
+     * keeps its freshly-inserted defaults (rating 0) — same as any word never studied before.
+     * Best-effort: a failure here (e.g. offline mid-sync) leaves progress at whatever it locally
+     * already was rather than blocking the content sync that already succeeded above. */
+    private suspend fun pullProgress(wordIdMap: Map<String, Long>, sentenceIdMap: Map<String, Long>) {
+        val userId = supabase.auth.currentUserOrNull()?.id ?: return
+        if (wordIdMap.isNotEmpty()) {
+            val rows = runCatching {
+                supabase.from("word_progress")
+                    .select(
+                        Columns.list(
+                            "word_id", "rating", "correct_streak", "typed_streak", "typed_reverse_active",
+                            "voice_streak", "final_streak", "times_seen", "in_review_list", "total_correct",
+                            "best_streak", "current_stats_streak",
+                        ),
+                    ) { filter { eq("user_id", userId); isIn("word_id", wordIdMap.keys.toList()) } }
+                    .decodeList<RemoteWordProgressRow>()
+            }.getOrDefault(emptyList())
+            for (row in rows) {
+                val localId = wordIdMap[row.wordId] ?: continue
+                val existing = wordDao.getById(localId) ?: continue
+                wordDao.update(
+                    existing.copy(
+                        rating = row.rating, correctStreak = row.correctStreak, typedStreak = row.typedStreak,
+                        typedReverseActive = row.typedReverseActive, voiceStreak = row.voiceStreak, finalStreak = row.finalStreak,
+                        timesSeen = row.timesSeen, inReviewList = row.inReviewList, totalCorrect = row.totalCorrect,
+                        bestStreak = row.bestStreak, currentStatsStreak = row.currentStatsStreak,
+                    ),
+                )
+            }
+        }
+        if (sentenceIdMap.isNotEmpty()) {
+            val rows = runCatching {
+                supabase.from("sentence_progress")
+                    .select(
+                        Columns.list(
+                            "sentence_id", "rating", "direct_streak", "reverse_streak", "audio_streak", "voice_streak",
+                            "times_seen", "total_correct", "best_streak", "current_stats_streak", "known",
+                        ),
+                    ) { filter { eq("user_id", userId); isIn("sentence_id", sentenceIdMap.keys.toList()) } }
+                    .decodeList<RemoteSentenceProgressRow>()
+            }.getOrDefault(emptyList())
+            for (row in rows) {
+                val localId = sentenceIdMap[row.sentenceId] ?: continue
+                val existing = sentenceDao.getById(localId) ?: continue
+                sentenceDao.update(
+                    existing.copy(
+                        rating = row.rating, directStreak = row.directStreak, reverseStreak = row.reverseStreak,
+                        audioStreak = row.audioStreak, voiceStreak = row.voiceStreak, timesSeen = row.timesSeen,
+                        totalCorrect = row.totalCorrect, bestStreak = row.bestStreak, currentStatsStreak = row.currentStatsStreak,
+                        known = row.known,
+                    ),
+                )
+            }
+        }
+    }
+
+    /** Best-effort push of one word's current progress to `word_progress` — a no-op for a word
+     * that's never been synced from the server ([Word.remoteId] null, i.e. "Власний матеріал"),
+     * whose progress stays purely local exactly as before this redesign. Called from
+     * [com.lexumi.app.data.repository.WordRepositoryImpl.updateWord] after every local progress
+     * write. Swallows failures (offline, etc.) — a study session never blocks or fails on a network
+     * hiccup; the next successful [syncTopicContent] pull picks up whatever's on the server anyway. */
+    suspend fun pushWordProgress(word: Word) {
+        val remoteWordId = word.remoteId ?: return
+        val userId = supabase.auth.currentUserOrNull()?.id ?: return
+        runCatching {
+            supabase.from("word_progress").upsert(
+                RemoteWordProgressUpsert(
+                    userId = userId, wordId = remoteWordId, rating = word.rating, correctStreak = word.correctStreak,
+                    typedStreak = word.typedStreak, typedReverseActive = word.typedReverseActive, voiceStreak = word.voiceStreak,
+                    finalStreak = word.finalStreak, timesSeen = word.timesSeen, inReviewList = word.inReviewList,
+                    totalCorrect = word.totalCorrect, bestStreak = word.bestStreak, currentStatsStreak = word.currentStatsStreak,
+                ),
+            ) { onConflict = "user_id,word_id" }
+        }
+    }
+
+    /** Mirrors [pushWordProgress] for sentences. */
+    suspend fun pushSentenceProgress(sentence: Sentence) {
+        val remoteSentenceId = sentence.remoteId ?: return
+        val userId = supabase.auth.currentUserOrNull()?.id ?: return
+        runCatching {
+            supabase.from("sentence_progress").upsert(
+                RemoteSentenceProgressUpsert(
+                    userId = userId, sentenceId = remoteSentenceId, rating = sentence.rating, directStreak = sentence.directStreak,
+                    reverseStreak = sentence.reverseStreak, audioStreak = sentence.audioStreak, voiceStreak = sentence.voiceStreak,
+                    timesSeen = sentence.timesSeen, totalCorrect = sentence.totalCorrect, bestStreak = sentence.bestStreak,
+                    currentStatsStreak = sentence.currentStatsStreak, known = sentence.known,
+                ),
+            ) { onConflict = "user_id,sentence_id" }
+        }
+    }
+
+    /** Deletes a topic's own leaf content (images/stories/videos+questions/audio+questions — none
+     * of it shared with any other topic) plus this device's local copy of the words/sentences it
+     * referenced, but ONLY the ones no OTHER locally-cached topic still needs (checked via
+     * [WordDao.countLinks]/[SentenceDao.countLinks] after this topic's own links are removed). The
+     * topic row itself and its progress on the server are untouched — this only clears the local
+     * cache; [syncTopicContent] rebuilds content AND pulls progress back the next time the topic is
+     * opened. Never touches a topic the user created themselves (`remoteId == null`). */
+    private suspend fun evictTopicContent(localTopicId: Long) {
+        val topic = topicDao.getById(localTopicId) ?: return
+        if (topic.remoteId == null) return
+
+        val wordLinks = wordTopicCrossRefDao.getForTopic(localTopicId)
+        val sentenceLinks = sentenceTopicCrossRefDao.getForTopic(localTopicId)
+        wordTopicCrossRefDao.deleteAllForTopic(localTopicId)
+        sentenceTopicCrossRefDao.deleteAllForTopic(localTopicId)
+        for (link in wordLinks) {
+            if (wordDao.countLinks(link.wordId) == 0) {
+                val word = wordDao.getById(link.wordId)
+                if (word?.remoteId != null) wordDao.deleteById(word.id)
+            }
+        }
+        for (link in sentenceLinks) {
+            if (sentenceDao.countLinks(link.sentenceId) == 0) {
+                val sentence = sentenceDao.getById(link.sentenceId)
+                if (sentence?.remoteId != null) sentenceDao.deleteById(sentence.id)
+            }
+        }
+
+        for (image in imageContentDao.getForTopic(localTopicId)) imageContentDao.delete(image)
+        for (story in storyDao.getForTopic(localTopicId)) storyDao.delete(story)
+        for (video in videoDao.getForTopic(localTopicId)) {
+            testQuestionDao.deleteAllForOwner(QuestionOwnerType.VIDEO, video.id)
+            videoDao.delete(video)
+        }
+        for (dialog in audioDialogDao.getForTopic(localTopicId)) {
+            testQuestionDao.deleteAllForOwner(QuestionOwnerType.AUDIO_DIALOG, dialog.id)
+            File(dialog.audioPath).delete()
+            audioDialogDao.delete(dialog)
+        }
+    }
+
+    /** Evicts every admin topic's cached content in [languageId] except [exceptTopicId] — at most
+     * one topic's content is meant to be cached at a time (see the plan notes: this is deliberate,
+     * not just a storage optimization — offline access to "Самостійне вивчення" content is meant to
+     * be limited to the one topic currently in progress). */
+    suspend fun evictStaleTopicContent(languageId: Long, exceptTopicId: Long?) {
+        for (section in sectionDao.getForLanguage(languageId)) {
+            for (topic in topicDao.getForSection(section.id)) {
+                if (topic.remoteId != null && topic.id != exceptTopicId) evictTopicContent(topic.id)
+            }
+        }
+    }
+
+    /** Same as [evictStaleTopicContent], resolving the language from [exceptTopicId] itself —
+     * convenient for call sites (like TopicActionViewModel) that only know the topic being opened. */
+    suspend fun evictOtherTopicsContent(exceptTopicId: Long) {
+        val topic = topicDao.getById(exceptTopicId) ?: return
+        val section = sectionDao.getById(topic.sectionId) ?: return
+        evictStaleTopicContent(section.languageId, exceptTopicId)
     }
 }

@@ -68,6 +68,7 @@
     <string name="learn_sentences">Речення</string>
     <string name="read_stories">Читати текст</string>
     <string name="add_more_content">+ Додати ще контент до теми</string>
+    <string name="offline_unavailable">Ця тема недоступна офлайн. Підключіться до інтернету, щоб відкрити її.</string>
 
     <!-- Settings -->
     <string name="settings">Налаштування</string>
