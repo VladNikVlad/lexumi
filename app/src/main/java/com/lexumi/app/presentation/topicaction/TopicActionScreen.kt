@@ -50,6 +50,7 @@ fun TopicActionScreen(
     val topicName by viewModel.topicName.collectAsState()
     val canEdit by viewModel.canEdit.collectAsState()
     val offlineUnavailable by viewModel.offlineUnavailable.collectAsState()
+    val loading by viewModel.loading.collectAsState()
 
     GradientBackground {
         BackIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(20.dp))
@@ -67,7 +68,9 @@ fun TopicActionScreen(
             androidx.compose.material3.Text(text = topicName, style = androidx.compose.material3.MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(20.dp))
 
-            if (offlineUnavailable) {
+            if (loading) {
+                androidx.compose.material3.CircularProgressIndicator()
+            } else if (offlineUnavailable) {
                 androidx.compose.material3.Text(
                     text = stringResource(R.string.offline_unavailable),
                     style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,

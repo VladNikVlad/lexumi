@@ -56,6 +56,15 @@ class TopicActionViewModel @Inject constructor(
     private val _offlineUnavailable = MutableStateFlow(false)
     val offlineUnavailable: StateFlow<Boolean> = _offlineUnavailable
 
+    // True until the sync below (or the offline local-content check) finishes — TopicActionScreen
+    // shows a loading spinner instead of the action menu while this is true. Without it, the menu
+    // opened immediately and each button popped in on its own as syncTopicContent wrote each
+    // content type to Room one at a time (words, then sentences, then videos, ...) — ugly, since
+    // `availability` below is wired straight to those same Room tables. Gating the whole menu on
+    // one flag means the buttons only ever appear together, already in their final state.
+    private val _loading = MutableStateFlow(true)
+    val loading: StateFlow<Boolean> = _loading
+
     init {
         viewModelScope.launch {
             val topic = topicRepository.getTopic(topicId)
@@ -84,6 +93,7 @@ class TopicActionViewModel @Inject constructor(
                     _offlineUnavailable.value = !hasLocalContent
                 }
             }
+            _loading.value = false
         }
     }
 
