@@ -88,11 +88,14 @@ fun LexumiNavGraph() {
             AddLanguageScreen(
                 // A language created here is always purely local (never admin-downloaded) — its
                 // "Самостійне вивчення" can never have content, so Home's 3-mode screen would just
-                // be two dead ends. Go straight to "Власний матеріал" instead.
+                // be two dead ends. Go straight to "Власний матеріал" instead — but via LanguageMenu
+                // (popUpTo(0), the same "clear everything" idiom Settings uses for logout/data-clear
+                // below), not a bare popUpTo(LanguageMenu){inclusive=true}: that left the back stack
+                // with Sections as the ONLY entry, so its own Back button silently did nothing —
+                // this way Back from Sections always has LanguageMenu to land on.
                 onCreated = { languageId ->
-                    navController.navigate(Screen.Sections.build(languageId, adminMode = false)) {
-                        popUpTo(Screen.LanguageMenu.route) { inclusive = true }
-                    }
+                    navController.navigate(Screen.LanguageMenu.route) { popUpTo(0) }
+                    navController.navigate(Screen.Sections.build(languageId, adminMode = false))
                 },
                 onBack = back,
             )
@@ -103,13 +106,16 @@ fun LexumiNavGraph() {
             HomeScreen(
                 onSelfStudy = { navController.navigate(Screen.Sections.build(languageId, adminMode = true)) },
                 onOwnMaterial = { navController.navigate(Screen.Sections.build(languageId, adminMode = false)) },
-                // Auto-redirect for a personal language with nothing to continue — replaces Home
-                // on the back stack so Back from Sections doesn't just bounce back into a screen
-                // that immediately redirects forward again.
+                // Auto-redirect for a personal language with nothing to continue. Rebuilds the
+                // stack as exactly [LanguageMenu, Sections] (same popUpTo(0)-then-push pattern as
+                // AddLanguage's onCreated above, see its comment) regardless of how Home was
+                // reached — including straight from Splash on a cold start, where LanguageMenu was
+                // never pushed at all, so a plain popUpTo(Home) would have left Sections as the
+                // ONLY back-stack entry and its Back button dead — this guarantees Back always
+                // lands on LanguageMenu instead.
                 onAutoOwnMaterial = {
-                    navController.navigate(Screen.Sections.build(languageId, adminMode = false)) {
-                        popUpTo(Screen.Home.build(languageId)) { inclusive = true }
-                    }
+                    navController.navigate(Screen.LanguageMenu.route) { popUpTo(0) }
+                    navController.navigate(Screen.Sections.build(languageId, adminMode = false))
                 },
                 onRepeatWords = { navController.navigate(Screen.ReviewWords.route) },
                 onContinueLast = { topicId, route -> navController.navigate("$route/$topicId") },
