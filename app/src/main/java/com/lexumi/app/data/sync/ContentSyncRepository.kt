@@ -16,6 +16,8 @@ import com.lexumi.app.data.local.dao.TopicDao
 import com.lexumi.app.data.local.dao.VideoDao
 import com.lexumi.app.data.local.dao.WordDao
 import com.lexumi.app.data.local.dao.WordTopicCrossRefDao
+import com.lexumi.app.data.local.dao.WordTranslationDao
+import com.lexumi.app.data.local.dao.SentenceTranslationDao
 import com.lexumi.app.data.local.entity.AnswerType
 import com.lexumi.app.data.local.entity.AudioDialogEntity
 import com.lexumi.app.data.local.entity.ImageContentEntity
@@ -31,6 +33,8 @@ import com.lexumi.app.data.local.entity.TopicEntity
 import com.lexumi.app.data.local.entity.VideoEntity
 import com.lexumi.app.data.local.entity.WordEntity
 import com.lexumi.app.data.local.entity.WordTopicCrossRefEntity
+import com.lexumi.app.data.local.entity.WordTranslationEntity
+import com.lexumi.app.data.local.entity.SentenceTranslationEntity
 import com.lexumi.app.domain.model.Sentence
 import com.lexumi.app.domain.model.Word
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -148,6 +152,26 @@ private data class RemoteSentenceRow(
     val text: String,
     val translations: String,
     @SerialName("rule_ids") val ruleIds: String? = null,
+)
+
+/** A translation of a [RemoteWordRow] into a locale OTHER than the default ('uk') — see
+ * backend/word_sentence_locale_translations.sql. Only fetched for words already resolved via
+ * [wordIdMap] (topic- or language-scoped), never independently. */
+@Serializable
+private data class RemoteWordTranslationRow(
+    val id: String? = null,
+    @SerialName("word_id") val wordId: String,
+    val locale: String,
+    val translations: String,
+)
+
+/** Mirrors [RemoteWordTranslationRow] for sentences. */
+@Serializable
+private data class RemoteSentenceTranslationRow(
+    val id: String? = null,
+    @SerialName("sentence_id") val sentenceId: String,
+    val locale: String,
+    val translations: String,
 )
 
 @Serializable
@@ -367,6 +391,8 @@ class ContentSyncRepository @Inject constructor(
     private val testQuestionDao: TestQuestionDao,
     private val imageContentDao: ImageContentDao,
     private val audioDialogDao: AudioDialogDao,
+    private val wordTranslationDao: WordTranslationDao,
+    private val sentenceTranslationDao: SentenceTranslationDao,
 ) {
 
     /** Upserts one row: updates the existing remote row if [remoteId] is already known, otherwise
@@ -716,6 +742,8 @@ class ContentSyncRepository @Inject constructor(
         val ruleIdMap = refreshRules(localLanguageId, remoteLanguageId)
         val wordIdMap = refreshWords(localLanguageId, remoteLanguageId, ruleIdMap)
         val sentenceIdMap = refreshSentences(localLanguageId, remoteLanguageId, ruleIdMap)
+        syncWordTranslations(wordIdMap)
+        syncSentenceTranslations(sentenceIdMap)
 
         val sections = supabase.from("sections")
             .select(Columns.list("id", "name", "position")) { filter { eq("language_id", remoteLanguageId) } }
@@ -810,6 +838,55 @@ class ContentSyncRepository @Inject constructor(
             existing.id
         } else {
             sentenceDao.insert(SentenceEntity(languageId = localLanguageId, text = sentenceRow.text, translations = translations, ruleIds = ruleIds, remoteId = remoteSentenceId))
+        }
+    }
+
+    private suspend fun upsertWordTranslationRow(localWordId: Long, row: RemoteWordTranslationRow) {
+        val remoteId = requireNotNull(row.id)
+        val existing = wordTranslationDao.getByRemoteId(remoteId)
+        val translations = row.translations.split(LIST_SEPARATOR)
+        if (existing != null) {
+            wordTranslationDao.update(existing.copy(translations = translations))
+        } else {
+            wordTranslationDao.insert(WordTranslationEntity(wordId = localWordId, locale = row.locale, translations = translations, remoteId = remoteId))
+        }
+    }
+
+    private suspend fun upsertSentenceTranslationRow(localSentenceId: Long, row: RemoteSentenceTranslationRow) {
+        val remoteId = requireNotNull(row.id)
+        val existing = sentenceTranslationDao.getByRemoteId(remoteId)
+        val translations = row.translations.split(LIST_SEPARATOR)
+        if (existing != null) {
+            sentenceTranslationDao.update(existing.copy(translations = translations))
+        } else {
+            sentenceTranslationDao.insert(SentenceTranslationEntity(sentenceId = localSentenceId, locale = row.locale, translations = translations, remoteId = remoteId))
+        }
+    }
+
+    /** Pulls every locale's translation for the words in [wordIdMap] (remote id -> local id) and
+     * upserts them locally — shared by [refreshLanguage] (language-wide) and [syncTopicContent]
+     * (topic-scoped) so both stay in sync with the admin panel's per-locale editing (see
+     * admin-web/app.js's locale switcher). A no-op for an empty map. */
+    private suspend fun syncWordTranslations(wordIdMap: Map<String, Long>) {
+        if (wordIdMap.isEmpty()) return
+        val rows = supabase.from("word_translations")
+            .select(Columns.list("id", "word_id", "locale", "translations")) { filter { isIn("word_id", wordIdMap.keys.toList()) } }
+            .decodeList<RemoteWordTranslationRow>()
+        for (row in rows) {
+            val localWordId = wordIdMap[row.wordId] ?: continue
+            upsertWordTranslationRow(localWordId, row)
+        }
+    }
+
+    /** Mirrors [syncWordTranslations] for sentences. */
+    private suspend fun syncSentenceTranslations(sentenceIdMap: Map<String, Long>) {
+        if (sentenceIdMap.isEmpty()) return
+        val rows = supabase.from("sentence_translations")
+            .select(Columns.list("id", "sentence_id", "locale", "translations")) { filter { isIn("sentence_id", sentenceIdMap.keys.toList()) } }
+            .decodeList<RemoteSentenceTranslationRow>()
+        for (row in rows) {
+            val localSentenceId = sentenceIdMap[row.sentenceId] ?: continue
+            upsertSentenceTranslationRow(localSentenceId, row)
         }
     }
 
@@ -1157,6 +1234,8 @@ class ContentSyncRepository @Inject constructor(
         val ruleIdMap = remoteRules.associate { requireNotNull(it.id) to upsertRuleRow(localLanguageId, it) }
         val wordIdMap = remoteWords.associate { requireNotNull(it.id) to upsertWordRow(localLanguageId, it, ruleIdMap) }
         val sentenceIdMap = remoteSentences.associate { requireNotNull(it.id) to upsertSentenceRow(localLanguageId, it, ruleIdMap) }
+        syncWordTranslations(wordIdMap)
+        syncSentenceTranslations(sentenceIdMap)
 
         refreshTopicWords(localTopicId, remoteTopicId, wordIdMap)
         refreshTopicSentences(localTopicId, remoteTopicId, sentenceIdMap)

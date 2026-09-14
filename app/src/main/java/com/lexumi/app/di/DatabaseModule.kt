@@ -41,4 +41,6 @@ object DatabaseModule {
     @Provides fun provideTestQuestionDao(db: LexumiDatabase): TestQuestionDao = db.testQuestionDao()
     @Provides fun provideSentenceDao(db: LexumiDatabase): SentenceDao = db.sentenceDao()
     @Provides fun provideStoryDao(db: LexumiDatabase): StoryDao = db.storyDao()
+    @Provides fun provideWordTranslationDao(db: LexumiDatabase): WordTranslationDao = db.wordTranslationDao()
+    @Provides fun provideSentenceTranslationDao(db: LexumiDatabase): SentenceTranslationDao = db.sentenceTranslationDao()
 }

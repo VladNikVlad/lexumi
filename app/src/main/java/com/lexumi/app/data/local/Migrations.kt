@@ -577,8 +577,47 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+/** v16 -> v17: adds [com.lexumi.app.data.local.entity.WordTranslationEntity]/
+ * [com.lexumi.app.data.local.entity.SentenceTranslationEntity] — per-interface-locale translations
+ * for admin words/sentences, mirroring backend/word_sentence_locale_translations.sql. The default
+ * locale ('uk') keeps living on words.translations/sentences.translations, unchanged; these new
+ * tables only ever hold rows for OTHER locales, pulled in by ContentSyncRepository.syncTopicContent. */
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE word_translations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                wordId INTEGER NOT NULL,
+                locale TEXT NOT NULL,
+                translations TEXT NOT NULL,
+                remoteId TEXT,
+                FOREIGN KEY(wordId) REFERENCES words(id) ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX index_word_translations_wordId ON word_translations(wordId)")
+        db.execSQL("CREATE UNIQUE INDEX index_word_translations_wordId_locale ON word_translations(wordId, locale)")
+
+        db.execSQL(
+            """
+            CREATE TABLE sentence_translations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                sentenceId INTEGER NOT NULL,
+                locale TEXT NOT NULL,
+                translations TEXT NOT NULL,
+                remoteId TEXT,
+                FOREIGN KEY(sentenceId) REFERENCES sentences(id) ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX index_sentence_translations_sentenceId ON sentence_translations(sentenceId)")
+        db.execSQL("CREATE UNIQUE INDEX index_sentence_translations_sentenceId_locale ON sentence_translations(sentenceId, locale)")
+    }
+}
+
 val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
     MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
-    MIGRATION_14_15, MIGRATION_15_16,
+    MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
 )

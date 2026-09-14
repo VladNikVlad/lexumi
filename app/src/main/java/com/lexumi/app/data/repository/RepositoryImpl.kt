@@ -1,5 +1,6 @@
 package com.lexumi.app.data.repository
 
+import androidx.appcompat.app.AppCompatDelegate
 import com.lexumi.app.data.local.dao.*
 import com.lexumi.app.data.local.entity.*
 import com.lexumi.app.data.sync.ContentSyncRepository
@@ -9,11 +10,23 @@ import com.lexumi.app.domain.repository.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/** The one locale that never needs a [WordTranslationEntity]/[SentenceTranslationEntity] row —
+ * words/sentences store their default-locale translation directly (see backend's
+ * word_sentence_locale_translations.sql doc comment for the full rationale). */
+private const val DEFAULT_LOCALE = "uk"
+
+/** Static call, no Context/DI needed — mirrors [com.lexumi.app.presentation.profile.ProfileViewModel.currentAppLanguageTag]. */
+private fun currentInterfaceLocale(): String {
+    val locales = AppCompatDelegate.getApplicationLocales()
+    return if (locales.isEmpty) DEFAULT_LOCALE else locales[0]?.language ?: DEFAULT_LOCALE
+}
 
 // ---------- mappers ----------
 private fun UserProfileEntity.toDomain() = UserProfile(id, displayName)
@@ -21,20 +34,26 @@ private fun LanguageEntity.toDomain() = Language(id, profileId, name, voiceName,
 private fun SectionEntity.toDomain() = Section(id, languageId, name, position, remoteId)
 private fun TopicEntity.toDomain() = Topic(id, sectionId, name, position, remoteId)
 private fun RuleEntity.toDomain() = Rule(id, languageId, name, text, imagePath, remoteId)
-/** No topic context — resolves to the shared default translation (no override). */
-private fun WordEntity.toDomain() = Word(id, languageId, imagePath, translations.firstOrNull().orEmpty(), translations, term, ruleId, rating, correctStreak, typedStreak, typedReverseActive, voiceStreak, finalStreak, timesSeen, inReviewList, totalCorrect, bestStreak, currentStatsStreak, remoteId)
-private fun WordEntity.toDomain(crossRef: WordTopicCrossRefEntity) = Word(
-    id, languageId, imagePath, crossRef.translationOverride ?: translations.firstOrNull().orEmpty(), translations, term, ruleId,
+/** Resolution priority for the shown translation: [crossRef]'s own fork (highest, unchanged by
+ * locale) -> [translation] for the current interface locale, if one exists -> the word's own base
+ * (default-locale) translation. Either/both of [crossRef]/[translation] may be omitted — e.g. a
+ * topic-less lookup, or an interface locale with no translation row for this word yet. */
+private fun WordEntity.toDomain(crossRef: WordTopicCrossRefEntity? = null, translation: WordTranslationEntity? = null) = Word(
+    id, languageId, imagePath,
+    crossRef?.translationOverride ?: translation?.translations?.firstOrNull() ?: translations.firstOrNull().orEmpty(),
+    translations, term, ruleId,
     rating, correctStreak, typedStreak, typedReverseActive, voiceStreak, finalStreak, timesSeen, inReviewList, totalCorrect,
     bestStreak, currentStatsStreak, remoteId,
 )
 private fun ImageContentEntity.toDomain() = ImageContent(id, topicId, name, imagePath, translation, remoteId)
 private fun VideoEntity.toDomain() = VideoContent(id, topicId, name, youtubeUrl, localVideoPath, originalText, translationText, ruleIds, remoteId)
 private fun AudioDialogEntity.toDomain() = AudioDialog(id, topicId, name, audioPath, translationText, ruleIds, remoteId)
-/** No topic context — resolves to the sentence's own shared translations (no override). */
-private fun SentenceEntity.toDomain() = Sentence(id, languageId, text, translations, ruleIds, rating, directStreak, reverseStreak, audioStreak, voiceStreak, timesSeen, totalCorrect, bestStreak, currentStatsStreak, known, remoteId)
-private fun SentenceEntity.toDomain(crossRef: SentenceTopicCrossRefEntity) = Sentence(
-    id, languageId, text, crossRef.translationsOverride ?: translations, ruleIds, rating, directStreak, reverseStreak,
+/** Mirrors [WordEntity.toDomain]'s resolution priority: [crossRef]'s own fork -> [translation] for
+ * the current interface locale, if any -> the sentence's own base (default-locale) translations. */
+private fun SentenceEntity.toDomain(crossRef: SentenceTopicCrossRefEntity? = null, translation: SentenceTranslationEntity? = null) = Sentence(
+    id, languageId, text,
+    crossRef?.translationsOverride ?: translation?.translations?.takeIf { it.isNotEmpty() } ?: translations,
+    ruleIds, rating, directStreak, reverseStreak,
     audioStreak, voiceStreak, timesSeen, totalCorrect, bestStreak, currentStatsStreak, known, remoteId,
 )
 private fun StoryEntity.toDomain() = Story(id, topicId, name, text, translation, ruleIds, remoteId)
@@ -116,6 +135,7 @@ class WordRepositoryImpl @Inject constructor(
     private val topicDao: TopicDao,
     private val sectionDao: SectionDao,
     private val syncRepository: ContentSyncRepository,
+    private val translationDao: WordTranslationDao,
     @AppCoroutineScope private val appScope: CoroutineScope,
 ) : WordRepository {
 
@@ -124,21 +144,31 @@ class WordRepositoryImpl @Inject constructor(
         return checkNotNull(sectionDao.getById(topic.sectionId)) { "Section ${topic.sectionId} not found" }.languageId
     }
 
-    private fun resolve(crossRefs: List<WordTopicCrossRefEntity>, words: List<WordEntity>): List<Word> {
+    private fun resolve(crossRefs: List<WordTopicCrossRefEntity>, words: List<WordEntity>, translations: Map<Long, WordTranslationEntity>): List<Word> {
         val byId = words.associateBy { it.id }
-        return crossRefs.sortedBy { it.position }.mapNotNull { cr -> byId[cr.wordId]?.toDomain(cr) }
+        return crossRefs.sortedBy { it.position }.mapNotNull { cr -> byId[cr.wordId]?.toDomain(cr, translations[cr.wordId]) }
     }
 
     override fun observeWords(topicId: Long): Flow<List<Word>> =
         crossRefDao.observeForTopic(topicId).flatMapLatest { crossRefs ->
             if (crossRefs.isEmpty()) flowOf(emptyList())
-            else dao.observeByIds(crossRefs.map { it.wordId }).map { words -> resolve(crossRefs, words) }
+            else {
+                val wordIds = crossRefs.map { it.wordId }
+                val locale = currentInterfaceLocale()
+                val translationsFlow = if (locale == DEFAULT_LOCALE) flowOf(emptyList()) else translationDao.observeForWords(wordIds, locale)
+                combine(dao.observeByIds(wordIds), translationsFlow) { words, translations ->
+                    resolve(crossRefs, words, translations.associateBy { it.wordId })
+                }
+            }
         }
 
     override suspend fun getWords(topicId: Long): List<Word> {
         val crossRefs = crossRefDao.getForTopic(topicId)
         if (crossRefs.isEmpty()) return emptyList()
-        return resolve(crossRefs, dao.getByIds(crossRefs.map { it.wordId }))
+        val wordIds = crossRefs.map { it.wordId }
+        val locale = currentInterfaceLocale()
+        val translations = if (locale == DEFAULT_LOCALE) emptyList() else translationDao.getForWords(wordIds, locale)
+        return resolve(crossRefs, dao.getByIds(wordIds), translations.associateBy { it.wordId })
     }
 
     override suspend fun getWordsForLanguage(languageId: Long): List<Word> = dao.getForLanguage(languageId).map { it.toDomain() }
@@ -146,7 +176,9 @@ class WordRepositoryImpl @Inject constructor(
     override suspend fun getWord(topicId: Long, id: Long): Word? {
         val entity = dao.getById(id) ?: return null
         val crossRef = crossRefDao.getLink(topicId, id)
-        return if (crossRef != null) entity.toDomain(crossRef) else entity.toDomain()
+        val locale = currentInterfaceLocale()
+        val translation = if (locale == DEFAULT_LOCALE) null else translationDao.getForWords(listOf(id), locale).firstOrNull()
+        return entity.toDomain(crossRef, translation)
     }
 
     override suspend fun findByLanguageAndTerm(languageId: Long, term: String): Word? = dao.findByLanguageAndTerm(languageId, term)?.toDomain()
@@ -289,6 +321,7 @@ class SentenceRepositoryImpl @Inject constructor(
     private val topicDao: TopicDao,
     private val sectionDao: SectionDao,
     private val syncRepository: ContentSyncRepository,
+    private val translationDao: SentenceTranslationDao,
     @AppCoroutineScope private val appScope: CoroutineScope,
 ) : SentenceRepository {
 
@@ -297,27 +330,39 @@ class SentenceRepositoryImpl @Inject constructor(
         return checkNotNull(sectionDao.getById(topic.sectionId)) { "Section ${topic.sectionId} not found" }.languageId
     }
 
-    private fun resolve(crossRefs: List<SentenceTopicCrossRefEntity>, sentences: List<SentenceEntity>): List<Sentence> {
+    private fun resolve(crossRefs: List<SentenceTopicCrossRefEntity>, sentences: List<SentenceEntity>, translations: Map<Long, SentenceTranslationEntity>): List<Sentence> {
         val byId = sentences.associateBy { it.id }
-        return crossRefs.sortedBy { it.position }.mapNotNull { cr -> byId[cr.sentenceId]?.toDomain(cr) }
+        return crossRefs.sortedBy { it.position }.mapNotNull { cr -> byId[cr.sentenceId]?.toDomain(cr, translations[cr.sentenceId]) }
     }
 
     override fun observeSentences(topicId: Long): Flow<List<Sentence>> =
         crossRefDao.observeForTopic(topicId).flatMapLatest { crossRefs ->
             if (crossRefs.isEmpty()) flowOf(emptyList())
-            else dao.observeByIds(crossRefs.map { it.sentenceId }).map { sentences -> resolve(crossRefs, sentences) }
+            else {
+                val sentenceIds = crossRefs.map { it.sentenceId }
+                val locale = currentInterfaceLocale()
+                val translationsFlow = if (locale == DEFAULT_LOCALE) flowOf(emptyList()) else translationDao.observeForSentences(sentenceIds, locale)
+                combine(dao.observeByIds(sentenceIds), translationsFlow) { sentences, translations ->
+                    resolve(crossRefs, sentences, translations.associateBy { it.sentenceId })
+                }
+            }
         }
 
     override suspend fun getSentences(topicId: Long): List<Sentence> {
         val crossRefs = crossRefDao.getForTopic(topicId)
         if (crossRefs.isEmpty()) return emptyList()
-        return resolve(crossRefs, dao.getByIds(crossRefs.map { it.sentenceId }))
+        val sentenceIds = crossRefs.map { it.sentenceId }
+        val locale = currentInterfaceLocale()
+        val translations = if (locale == DEFAULT_LOCALE) emptyList() else translationDao.getForSentences(sentenceIds, locale)
+        return resolve(crossRefs, dao.getByIds(sentenceIds), translations.associateBy { it.sentenceId })
     }
 
     override suspend fun getSentence(topicId: Long, id: Long): Sentence? {
         val entity = dao.getById(id) ?: return null
         val crossRef = crossRefDao.getLink(topicId, id)
-        return if (crossRef != null) entity.toDomain(crossRef) else entity.toDomain()
+        val locale = currentInterfaceLocale()
+        val translation = if (locale == DEFAULT_LOCALE) null else translationDao.getForSentences(listOf(id), locale).firstOrNull()
+        return entity.toDomain(crossRef, translation)
     }
 
     override suspend fun findByLanguageAndText(languageId: Long, text: String): Sentence? = dao.findByLanguageAndText(languageId, text)?.toDomain()

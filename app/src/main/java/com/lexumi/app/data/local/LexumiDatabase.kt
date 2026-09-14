@@ -22,8 +22,10 @@ import com.lexumi.app.data.local.entity.*
         SentenceEntity::class,
         SentenceTopicCrossRefEntity::class,
         StoryEntity::class,
+        WordTranslationEntity::class,
+        SentenceTranslationEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -42,6 +44,8 @@ abstract class LexumiDatabase : RoomDatabase() {
     abstract fun sentenceDao(): SentenceDao
     abstract fun sentenceTopicCrossRefDao(): SentenceTopicCrossRefDao
     abstract fun storyDao(): StoryDao
+    abstract fun wordTranslationDao(): WordTranslationDao
+    abstract fun sentenceTranslationDao(): SentenceTranslationDao
 
     companion object {
         const val DATABASE_NAME = "lexumi.db"
