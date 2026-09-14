@@ -77,33 +77,53 @@ async function cascadeDeleteLanguage(languageId) {
 
 // ---------- bootstrap ----------
 
-// 2FA is verified per BROWSER SESSION, not persisted across a closed tab/browser — sessionStorage
-// (not localStorage) is exactly that lifetime. Keyed by admin id so switching accounts in the same
-// browser (rare, but possible) doesn't let one admin's verification cover another's.
+// 2FA is verified per SIGNED-IN SESSION, not just per browser tab — sessionStorage still backs it
+// (so closing the tab/browser also clears it), but signing out clears it too (see the `!admin`
+// branch below), so signing back in — even in the same tab — asks for a fresh code every time.
 function isTwoFactorVerified(adminId) {
   return sessionStorage.getItem(`lexumi_2fa_verified_${adminId}`) === 'true';
 }
 function markTwoFactorVerified(adminId) {
   sessionStorage.setItem(`lexumi_2fa_verified_${adminId}`, 'true');
 }
+function clearTwoFactorVerification() {
+  Object.keys(sessionStorage)
+    .filter((key) => key.startsWith('lexumi_2fa_verified_'))
+    .forEach((key) => sessionStorage.removeItem(key));
+}
+
+// Supabase can fire onAuthStateChange more than once for a single sign-in (e.g. an INITIAL_SESSION
+// event right alongside SIGNED_IN) — each firing is async or wasAdmin (checked before the `await`
+// resolved by the same concurrent firing) meant every one of them independently concluded "this is
+// a fresh sign-in" and called render2faGate(), each sending its own code. Tracking the admin id
+// we've already bootstrapped for makes entering the gate/panel idempotent regardless of how many
+// times the event fires for the same sign-in.
+let bootstrappedAdminId = null;
+
+function enterAsAdmin() {
+  if (bootstrappedAdminId === admin.id) return;
+  bootstrappedAdminId = admin.id;
+  if (isTwoFactorVerified(admin.id)) { location.hash = '#/'; route(); } else { render2faGate(); }
+}
 
 async function init() {
   admin = await requireAdmin();
   renderAuthBar();
   if (!admin) { renderLogin(); return; }
-  if (isTwoFactorVerified(admin.id)) route(); else render2faGate();
+  enterAsAdmin();
 }
 
 window.addEventListener('hashchange', () => { if (admin && isTwoFactorVerified(admin.id)) route(); });
 
 supabaseClient.auth.onAuthStateChange(async () => {
-  const wasAdmin = !!admin;
   admin = await requireAdmin();
   renderAuthBar();
   if (!admin) {
+    bootstrappedAdminId = null;
+    clearTwoFactorVerification();
     renderLogin();
-  } else if (!wasAdmin) {
-    if (isTwoFactorVerified(admin.id)) { location.hash = '#/'; route(); } else { render2faGate(); }
+  } else {
+    enterAsAdmin();
   }
 });
 
