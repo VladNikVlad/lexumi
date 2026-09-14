@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
     if (!code || typeof code !== "string") return json({ error: "Код обов'язковий" }, 400);
 
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const { data: latest } = await admin
+    const { data: latest, error: queryError } = await admin
       .from("admin_2fa_codes")
       .select("id, code, attempts, expires_at, used_at")
       .eq("profile_id", user.id)
@@ -49,6 +49,10 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    // A real query failure (e.g. a missing column) must never be reported as "no code sent yet" —
+    // that reading sent us chasing the wrong bug once already when this table was missing columns
+    // a first admin_2fa.sql run had silently skipped (it already existed from an older draft).
+    if (queryError) return json({ error: `Помилка бази даних: ${queryError.message}` }, 500);
     if (!latest) return json({ error: "Спершу запросіть код" }, 400);
     if (latest.used_at) return json({ error: "Цей код уже використано — запросіть новий" }, 400);
     if (new Date(latest.expires_at).getTime() < Date.now()) return json({ error: "Код прострочено — запросіть новий" }, 400);
