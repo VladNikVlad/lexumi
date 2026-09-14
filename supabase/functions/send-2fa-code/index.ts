@@ -4,7 +4,15 @@
 // this file's contents) — see admin-web/README.md for the full one-time setup, including the
 // RESEND_API_KEY secret this function needs.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/cors.ts";
+
+// admin-web calls this from a different origin (Vercel) — both the preflight OPTIONS response and
+// every real response need these headers or the browser's fetch (via supabaseClient.functions.
+// invoke) rejects it silently. Inlined here (not a shared import) so this file pastes as-is into
+// the Supabase Dashboard's one-file-per-function editor with nothing else to add.
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 const CODE_TTL_MINUTES = 10;
 // Resend's own sandbox sender — works immediately, no domain verification needed. Swap for a

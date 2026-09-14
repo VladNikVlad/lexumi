@@ -3,7 +3,13 @@
 // MAX_ATTEMPTS wrong guesses have been made against it, forcing a fresh send instead of allowing
 // unlimited brute-forcing of a 6-digit code within its expiry window.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/cors.ts";
+
+// See the identical block in send-2fa-code/index.ts for why this is inlined rather than a shared
+// import — the Dashboard editor deploys one function's files at a time, not across functions.
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 const MAX_ATTEMPTS = 5;
 
