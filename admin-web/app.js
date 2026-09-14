@@ -10,6 +10,24 @@ const authBar = document.getElementById('auth-bar');
 
 let admin = null; // { id, display_name, is_admin } while signed in as a confirmed admin
 
+// ---------- editing locale (which language's translations the panel currently works in) ----------
+// A personal preference of this admin's browser, not shared with anyone else — the underlying
+// content (word/sentence TERM) is locale-independent, only which translation you're reading/
+// writing changes. 'uk' is the original/default locale: words.translations and
+// sentences.translations themselves ARE the 'uk' translation, unchanged since before this feature
+// existed — every other locale lives in the new word_translations/sentence_translations tables
+// (see backend/word_sentence_locale_translations.sql).
+const DEFAULT_LOCALE = 'uk';
+function getEditingLocale() {
+  return localStorage.getItem('lexumi_editing_locale') || DEFAULT_LOCALE;
+}
+function setEditingLocale(locale) {
+  localStorage.setItem('lexumi_editing_locale', locale);
+}
+function localeLabel(locale) {
+  return locale === 'en' ? 'English' : locale === 'uk' ? 'Українською' : locale;
+}
+
 // ---------- cascade delete for languages/sections/topics ----------
 // Postgres's own `on delete cascade` only fires on a real DELETE — since `deleteRow` now soft-
 // deletes (see crud.js), deleting a language/section/topic no longer automatically takes its
@@ -133,9 +151,21 @@ init();
 
 function renderAuthBar() {
   authBar.innerHTML = admin
-    ? `<span>${escapeHtml(admin.display_name || 'Адмін')}</span> <button id="sign-out">Вийти</button>`
+    ? `
+      <label>Редагую переклади:
+        <select id="editing-locale">
+          <option value="uk" ${getEditingLocale() === 'uk' ? 'selected' : ''}>Українською</option>
+          <option value="en" ${getEditingLocale() === 'en' ? 'selected' : ''}>English</option>
+        </select>
+      </label>
+      <span>${escapeHtml(admin.display_name || 'Адмін')}</span> <button id="sign-out">Вийти</button>
+    `
     : '';
   document.getElementById('sign-out')?.addEventListener('click', () => supabaseClient.auth.signOut());
+  document.getElementById('editing-locale')?.addEventListener('change', (e) => {
+    setEditingLocale(e.target.value);
+    if (admin && isTwoFactorVerified(admin.id)) route();
+  });
 }
 
 function renderLogin() {
@@ -535,6 +565,8 @@ function renderTab(key, topicId, languageId, rules) {
 // -- words --
 
 async function renderWordsTab(container, topicId, languageId) {
+  if (getEditingLocale() !== DEFAULT_LOCALE) return renderWordsTranslationTab(container, topicId, languageId);
+
   const links = await listRows('topic_words', { topic_id: topicId, owner_id: null }, 'position');
   const words = links.length
     ? await listRows('words', { language_id: languageId, owner_id: null })
@@ -634,9 +666,80 @@ async function renderWordsTab(container, topicId, languageId) {
   });
 }
 
+/** Non-default-locale view of a topic's words — read-only list (no "Додати слово": creating new
+ * vocabulary always happens in the default locale, see DEFAULT_LOCALE's own doc comment) with a
+ * per-word "Редагувати переклад" action that opens [renderWordTranslationForm]. Deliberately a
+ * separate function from renderWordsTab rather than more branches inside it — the two views share
+ * almost nothing (no rule/image/override fields, no add-word form, no delete actions). */
+async function renderWordsTranslationTab(container, topicId, languageId) {
+  const locale = getEditingLocale();
+  const links = await listRows('topic_words', { topic_id: topicId, owner_id: null }, 'position');
+  const words = links.length
+    ? await listRows('words', { language_id: languageId, owner_id: null })
+    : [];
+  const wordIds = words.map((w) => w.id);
+  const translations = wordIds.length ? await listRows('word_translations', { locale }) : [];
+  const translationByWordId = Object.fromEntries(
+    translations.filter((t) => wordIds.includes(t.word_id)).map((t) => [t.word_id, t]),
+  );
+  const wordById = Object.fromEntries(words.map((w) => [w.id, w]));
+
+  container.innerHTML = `
+    <p class="hint">Редагування перекладів (${localeLabel(locale)}) — щоб додати нове слово,
+      перемкніться на "Українською" вгорі сторінки.</p>
+    <ul class="list">
+      ${links.map((link) => {
+        const word = wordById[link.word_id];
+        if (!word) return '';
+        const t = translationByWordId[word.id];
+        const shown = t ? splitList(t.translations)[0] : null;
+        return `<li><strong>${escapeHtml(word.term)}</strong> — ${shown ? escapeHtml(shown) : '<em>не перекладено</em>'}
+          <button data-translate-word="${word.id}">Редагувати переклад</button></li>`;
+      }).join('') || '<li class="hint">Ще немає слів у цій темі.</li>'}
+    </ul>
+  `;
+  container.querySelectorAll('[data-translate-word]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const word = wordById[btn.dataset.translateWord];
+      renderWordTranslationForm(container, word, translationByWordId[word.id], locale, () => renderWordsTab(container, topicId, languageId));
+    });
+  });
+}
+
+/** The "translate this one word" mini-screen — replaces the tab's content, same as every other
+ * edit flow in this file. Never touches `words.translations` (the default-locale text) — only
+ * upserts a row in word_translations for [locale]. */
+function renderWordTranslationForm(container, word, existing, locale, onDone) {
+  container.innerHTML = `
+    <div class="card">
+      <p><strong>${escapeHtml(word.term)}</strong></p>
+      <p class="hint">Базовий переклад (${localeLabel(DEFAULT_LOCALE)}): ${escapeHtml(splitList(word.translations).join(' / '))}</p>
+      <form id="translate-word-form">
+        <input type="text" name="translation" placeholder="Переклад (${localeLabel(locale)}, кілька варіантів — через /)" required>
+        <button type="submit">Зберегти</button>
+        <button type="button" id="cancel-translate">Скасувати</button>
+      </form>
+    </div>
+  `;
+  const form = document.getElementById('translate-word-form');
+  form.translation.value = existing ? splitList(existing.translations).join(' / ') : '';
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const raw = new FormData(form).get('translation').trim();
+    if (!raw) return;
+    const translations = joinList(raw.split('/').map((s) => s.trim()).filter(Boolean));
+    if (existing) await updateRow('word_translations', existing.id, { translations });
+    else await insertRow('word_translations', { word_id: word.id, locale, translations });
+    onDone();
+  });
+  document.getElementById('cancel-translate').addEventListener('click', onDone);
+}
+
 // -- sentences --
 
 async function renderSentencesTab(container, topicId, languageId) {
+  if (getEditingLocale() !== DEFAULT_LOCALE) return renderSentencesTranslationTab(container, topicId, languageId);
+
   const links = await listRows('topic_sentences', { topic_id: topicId, owner_id: null }, 'position');
   const sentences = links.length
     ? await listRows('sentences', { language_id: languageId, owner_id: null })
@@ -728,6 +831,67 @@ async function renderSentencesTab(container, topicId, languageId) {
     if (remaining.length === 0) await deleteRow('sentences', sentenceId);
     renderSentencesTab(container, topicId, languageId);
   });
+}
+
+async function renderSentencesTranslationTab(container, topicId, languageId) {
+  const locale = getEditingLocale();
+  const links = await listRows('topic_sentences', { topic_id: topicId, owner_id: null }, 'position');
+  const sentences = links.length
+    ? await listRows('sentences', { language_id: languageId, owner_id: null })
+    : [];
+  const sentenceIds = sentences.map((s) => s.id);
+  const translations = sentenceIds.length ? await listRows('sentence_translations', { locale }) : [];
+  const translationBySentenceId = Object.fromEntries(
+    translations.filter((t) => sentenceIds.includes(t.sentence_id)).map((t) => [t.sentence_id, t]),
+  );
+  const sentenceById = Object.fromEntries(sentences.map((s) => [s.id, s]));
+
+  container.innerHTML = `
+    <p class="hint">Редагування перекладів (${localeLabel(locale)}) — щоб додати нове речення,
+      перемкніться на "Українською" вгорі сторінки.</p>
+    <ul class="list">
+      ${links.map((link) => {
+        const sentence = sentenceById[link.sentence_id];
+        if (!sentence) return '';
+        const t = translationBySentenceId[sentence.id];
+        const shown = t ? splitList(t.translations)[0] : null;
+        return `<li><strong>${escapeHtml(sentence.text)}</strong> — ${shown ? escapeHtml(shown) : '<em>не перекладено</em>'}
+          <button data-translate-sentence="${sentence.id}">Редагувати переклад</button></li>`;
+      }).join('') || '<li class="hint">Ще немає речень у цій темі.</li>'}
+    </ul>
+  `;
+  container.querySelectorAll('[data-translate-sentence]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const sentence = sentenceById[btn.dataset.translateSentence];
+      renderSentenceTranslationForm(container, sentence, translationBySentenceId[sentence.id], locale, () => renderSentencesTab(container, topicId, languageId));
+    });
+  });
+}
+
+function renderSentenceTranslationForm(container, sentence, existing, locale, onDone) {
+  container.innerHTML = `
+    <div class="card">
+      <p><strong>${escapeHtml(sentence.text)}</strong></p>
+      <p class="hint">Базовий переклад (${localeLabel(DEFAULT_LOCALE)}): ${escapeHtml(splitList(sentence.translations).join(' / '))}</p>
+      <form id="translate-sentence-form">
+        <input type="text" name="translation" placeholder="Переклад (${localeLabel(locale)}, кілька варіантів — через /)" required>
+        <button type="submit">Зберегти</button>
+        <button type="button" id="cancel-translate">Скасувати</button>
+      </form>
+    </div>
+  `;
+  const form = document.getElementById('translate-sentence-form');
+  form.translation.value = existing ? splitList(existing.translations).join(' / ') : '';
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const raw = new FormData(form).get('translation').trim();
+    if (!raw) return;
+    const translations = joinList(raw.split('/').map((s) => s.trim()).filter(Boolean));
+    if (existing) await updateRow('sentence_translations', existing.id, { translations });
+    else await insertRow('sentence_translations', { sentence_id: sentence.id, locale, translations });
+    onDone();
+  });
+  document.getElementById('cancel-translate').addEventListener('click', onDone);
 }
 
 // -- videos (+ nested test questions) --

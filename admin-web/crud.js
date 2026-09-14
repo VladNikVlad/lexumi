@@ -12,6 +12,7 @@ import { supabaseClient } from './supabase-client.js';
 const SOFT_DELETE_TABLES = new Set([
   'languages', 'sections', 'topics', 'words', 'topic_words', 'rules',
   'sentences', 'topic_sentences', 'image_content', 'stories',
+  'word_translations', 'sentence_translations',
 ]);
 
 export async function listRows(table, filters = {}, orderBy = null) {
